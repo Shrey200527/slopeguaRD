@@ -1,0 +1,84 @@
+[
+  {
+    "id": "ZONE-A",
+    "name": "Zone A — Khed",
+    "risk": 86,
+    "confidence": 92,
+    "lat": 18.839,
+    "lng": 73.887,
+    "rainfall": 142,
+    "soilMoisture": 81,
+    "tilt": 4.8,
+    "population": 12500,
+    "roads": 8,
+    "bridges": 2,
+    "status": "CRITICAL",
+    "reasons": [
+      "Heavy rainfall",
+      "High soil moisture",
+      "Increasing ground tilt"
+    ],
+    "recommendedAction": "Prepare evacuation and dispatch field verification team"
+  },
+  {
+    "id": "ZONE-B",
+    "name": "Zone B — Maval",
+    "risk": 73,
+    "confidence": 88,
+    "lat": 18.754,
+    "lng": 73.546,
+    "rainfall": 118,
+    "soilMoisture": 69,
+    "tilt": 3.1,
+    "population": 8700,
+    "roads": 6,
+    "bridges": 1,
+    "status": "HIGH",
+    "reasons": [
+      "Heavy rainfall detected",
+      "Increasing soil moisture",
+      "Moderate ground movement"
+    ],
+    "recommendedAction": "Verify field conditions and monitor continuously"
+  },
+  {
+    "id": "ZONE-C",
+    "name": "Zone C — Mulshi",
+    "risk": 57,
+    "confidence": 84,
+    "lat": 18.523,
+    "lng": 73.512,
+    "rainfall": 86,
+    "soilMoisture": 58,
+    "tilt": 1.9,
+    "population": 5400,
+    "roads": 4,
+    "bridges": 1,
+    "status": "MEDIUM",
+    "reasons": [
+      "Rising soil moisture",
+      "Moderate rainfall"
+    ],
+    "recommendedAction": "Continue monitoring sensor readings"
+  },
+  {
+    "id": "ZONE-D",
+    "name": "Zone D — Lonavala",
+    "risk": 42,
+    "confidence": 91,
+    "lat": 18.754,
+    "lng": 73.406,
+    "rainfall": 62,
+    "soilMoisture": 43,
+    "tilt": 0.8,
+    "population": 3200,
+    "roads": 3,
+    "bridges": 0,
+    "status": "LOW",
+    "reasons": [
+      "Low rainfall",
+      "Stable ground movement"
+    ],
+    "recommendedAction": "Routine monitoring"
+  }
+]

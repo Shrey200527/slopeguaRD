@@ -1,0 +1,14 @@
+cat > .gitignore <<'EOF'
+# Python
+__pycache__/
+*.pyc
+
+# Virtual environment
+.venv/
+
+# Large generated raster
+data/processed/landslide_susceptibility.tif
+
+# Temporary files
+*.tmp
+EOFdata/raw/gsi/landslide_inventory/GSI_Landslide_Inventory.dbf

@@ -1,0 +1,5 @@
+rainfall,soil_moisture,slope,elevation,historical_risk,ground_movement,landslide
+32,34,12,850,0.12,0.4,0
+55,47,18,920,0.20,0.8,0
+78,65,28,1100,0.45,1.4,1
+120,82,36,1300,0.72,3.8,1

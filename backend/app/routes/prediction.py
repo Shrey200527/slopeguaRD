@@ -4,6 +4,7 @@ from datetime import datetime
 from backend.app.database import get_db
 from backend.app.models.prediction import Prediction
 from backend.app.models.alert import Alert
+from backend.app.models.zone import Zone
 from backend.app.schemas.prediction import PredictionRequest, PredictionResponse
 from backend.app.services.prediction_service import PredictionService
 from backend.app.services.alert_service import AlertService
@@ -16,18 +17,31 @@ async def create_prediction(
     request: PredictionRequest,
     db: Session = Depends(get_db)
 ):
-    try:
-        # Calculate risk using the prediction service
-        risk_result = PredictionService.calculate_risk(
-            rainfall=request.rainfall,
-            soil_moisture=request.soil_moisture,
-            slope=request.slope,
-            elevation=request.elevation,
-            historical_risk=request.historical_risk,
-            tilt=request.tilt
+    # 1. Query zone by zone_id
+    zone = db.query(Zone).filter(Zone.zone_id == request.zone_id).first()
+    if not zone:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Zone '{request.zone_id}' not found"
         )
-        
-        # Create prediction record
+
+    # 2. Read terrain features; for missing nullable values use safe default 0.0
+    slope = float(zone.slope) if zone.slope is not None else 0.0
+    elevation = float(zone.elevation) if zone.elevation is not None else 0.0
+    historical_risk = float(zone.historical_risk) if zone.historical_risk is not None else 0.0
+
+    try:
+        # 3. Calculate risk using the prediction service
+        risk_result = PredictionService.calculate_risk(
+            rainfall_24h=request.rainfall_24h,
+            soil_moisture=request.soil_moisture,
+            ground_movement=request.ground_movement,
+            slope=slope,
+            elevation=elevation,
+            historical_risk=historical_risk
+        )
+
+        # 4. Create prediction record in DB
         db_prediction = Prediction(
             zone_id=request.zone_id,
             timestamp=datetime.utcnow(),
@@ -35,18 +49,19 @@ async def create_prediction(
             risk_level=risk_result['risk_level'],
             confidence=risk_result['confidence']
         )
-        
+
         db.add(db_prediction)
         db.commit()
         db.refresh(db_prediction)
-        
-        # Generate alert if risk score is critical
+
+        # 5. Generate alert if risk score is critical
         alert_data = AlertService.generate_alert_from_prediction(
             zone_id=db_prediction.zone_id,
             risk_score=db_prediction.risk_score,
-            confidence=db_prediction.confidence
+            confidence=db_prediction.confidence,
+            recommended_action=risk_result['recommended_action']
         )
-        
+
         if alert_data:
             try:
                 db_alert = Alert(
@@ -61,18 +76,24 @@ async def create_prediction(
                 db.refresh(db_alert)
             except Exception as alert_error:
                 db.rollback()
-                # Alert creation failed, but prediction is already saved
-                # Log the error but don't fail the prediction request
                 print(f"Warning: Failed to create alert: {alert_error}")
-        
-        # Return response with calculated risk
+
+        # 6. Return response matching frontend contract
         return PredictionResponse(
             zone_id=db_prediction.zone_id,
+            terrain_probability=risk_result['terrain_probability'],
+            rainfall_factor=risk_result['rainfall_factor'],
+            soil_moisture_factor=risk_result['soil_moisture_factor'],
+            ground_movement_factor=risk_result['ground_movement_factor'],
+            risk_probability=risk_result['risk_probability'],
             risk_score=db_prediction.risk_score,
             risk_level=db_prediction.risk_level,
             confidence=db_prediction.confidence,
-            drivers=risk_result['drivers']
+            recommended_action=risk_result['recommended_action'],
+            drivers=risk_result.get('drivers', [])
         )
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to create prediction: {str(e)}")

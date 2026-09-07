@@ -1,23 +1,26 @@
 from pydantic import BaseModel
-from datetime import datetime
+from typing import List, Optional
 
 
 class PredictionRequest(BaseModel):
     zone_id: str
-    rainfall: float
+    rainfall_24h: float
     soil_moisture: float
-    slope: float
-    elevation: float
-    historical_risk: float
-    tilt: float
+    ground_movement: float
 
 
 class PredictionResponse(BaseModel):
     zone_id: str
+    terrain_probability: float
+    rainfall_factor: float
+    soil_moisture_factor: float
+    ground_movement_factor: float
+    risk_probability: float
     risk_score: float
     risk_level: str
     confidence: float
-    drivers: list[str]
+    recommended_action: str
+    drivers: Optional[List[str]] = []
 
     class Config:
         from_attributes = True

@@ -10,3 +10,6 @@ class Zone(Base):
     name = Column(String)
     latitude = Column(Float)
     longitude = Column(Float)
+    slope = Column(Float, nullable=True, default=0.0)
+    elevation = Column(Float, nullable=True, default=0.0)
+    historical_risk = Column(Float, nullable=True, default=0.0)

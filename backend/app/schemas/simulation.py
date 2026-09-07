@@ -3,12 +3,9 @@ from pydantic import BaseModel
 
 class SimulationRequest(BaseModel):
     zone_id: str
-    forecast_rainfall: float
-    current_soil_moisture: float
-    slope: float
-    elevation: float
-    historical_risk: float
-    current_tilt: float
+    rainfall_24h: float
+    soil_moisture: float
+    ground_movement: float
 
 
 class SimulationResponse(BaseModel):

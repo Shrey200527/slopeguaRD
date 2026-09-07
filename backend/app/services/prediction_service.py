@@ -1,85 +1,110 @@
-from datetime import datetime
-from typing import Dict, List
+from typing import Dict, Any, List
 
 
 class PredictionService:
     @staticmethod
     def calculate_risk(
-        rainfall: float,
+        rainfall_24h: float,
         soil_moisture: float,
-        slope: float,
-        elevation: float,
-        historical_risk: float,
-        tilt: float
-    ) -> Dict[str, any]:
+        ground_movement: float,
+        slope: float = 0.0,
+        elevation: float = 0.0,
+        historical_risk: float = 0.0
+    ) -> Dict[str, Any]:
         """
-        Mock deterministic risk calculation.
-        This will be replaced by the actual ML model later.
+        Deterministic backend risk calculation (fallback/pre-ML integration).
+        Conforms strictly to the frontend and ML contract:
+        - Inputs: rainfall_24h, soil_moisture, ground_movement, slope, elevation, historical_risk.
+        - Outputs: terrain_probability, rainfall_factor, soil_moisture_factor,
+                   ground_movement_factor, risk_probability, risk_score,
+                   risk_level (LOW, MODERATE, HIGH, CRITICAL), confidence,
+                   recommended_action, drivers.
         """
-        # Normalize inputs to 0-1 range for calculation
-        rainfall_norm = min(rainfall / 100.0, 1.0)  # Assume max rainfall 100mm
-        soil_moisture_norm = min(soil_moisture / 100.0, 1.0)  # Assume max 100%
-        slope_norm = min(slope / 90.0, 1.0)  # Assume max slope 90 degrees
-        elevation_norm = min(elevation / 2000.0, 1.0)  # Assume max elevation 2000m
-        historical_risk_norm = historical_risk / 100.0
-        tilt_norm = min(abs(tilt) / 45.0, 1.0)  # Assume max tilt 45 degrees
-        
-        # Weighted risk calculation (mock algorithm)
-        weights = {
-            'rainfall': 0.25,
-            'soil_moisture': 0.20,
-            'slope': 0.15,
-            'elevation': 0.10,
-            'historical_risk': 0.20,
-            'tilt': 0.10
-        }
-        
-        risk_score = (
-            rainfall_norm * weights['rainfall'] +
-            soil_moisture_norm * weights['soil_moisture'] +
-            slope_norm * weights['slope'] +
-            elevation_norm * weights['elevation'] +
-            historical_risk_norm * weights['historical_risk'] +
-            tilt_norm * weights['tilt']
-        ) * 100
-        
-        # Determine risk level
-        if risk_score >= 80:
-            risk_level = "CRITICAL"
-        elif risk_score >= 60:
-            risk_level = "HIGH"
-        elif risk_score >= 40:
-            risk_level = "MEDIUM"
-        else:
+        # Safe numeric defaults for terrain values
+        slope_val = max(float(slope or 0.0), 0.0)
+        elev_val = max(float(elevation or 0.0), 0.0)
+        hist_val = max(float(historical_risk or 0.0), 0.0)
+
+        # Dynamic environmental signals normalized using ML criteria:
+        # rainfall_24h normalized against 150mm threshold (matching ML)
+        rainfall_factor = round(min(rainfall_24h / 150.0, 1.0), 3) if rainfall_24h > 0 else 0.0
+        # soil_moisture normalized against 100%
+        soil_moisture_factor = round(min(soil_moisture / 100.0, 1.0), 3) if soil_moisture > 0 else 0.0
+        # ground_movement normalized against 10.0 scale (matching ML)
+        ground_movement_factor = round(min(ground_movement / 10.0, 1.0), 3) if ground_movement > 0 else 0.0
+
+        # Dynamic signal fusion layer (45% rain, 35% moisture, 20% movement matching ML)
+        dynamic_factor = (
+            0.45 * rainfall_factor +
+            0.35 * soil_moisture_factor +
+            0.20 * ground_movement_factor
+        )
+
+        # Heuristic terrain susceptibility proxying XGBoost terrain output
+        slope_norm = min(slope_val / 90.0, 1.0)
+        elevation_norm = min(elev_val / 2000.0, 1.0)
+        hist_norm = min(hist_val / 100.0, 1.0)
+        terrain_probability = round(
+            0.60 * slope_norm + 0.25 * elevation_norm + 0.15 * hist_norm,
+            4
+        )
+
+        # Final risk probability fusion (70% terrain, 30% dynamic signals)
+        final_probability = (0.70 * terrain_probability) + (0.30 * dynamic_factor)
+        final_probability = min(max(final_probability, 0.0), 1.0)
+
+        risk_score = round(final_probability * 100.0, 2)
+
+        # Risk level categorization matching ML contract:
+        # 0 - 24.99: LOW
+        # 25 - 49.99: MODERATE
+        # 50 - 74.99: HIGH
+        # 75 - 100: CRITICAL
+        if risk_score < 25.0:
             risk_level = "LOW"
-        
-        # Calculate confidence based on input consistency
-        confidence = 0.7 + (0.3 * (1 - abs(risk_score - 50) / 50))
-        confidence = max(0.5, min(0.95, confidence))
-        
-        # Identify major contributing factors
-        drivers = []
-        contributions = {
-            'High rainfall': rainfall_norm * weights['rainfall'],
-            'High soil moisture': soil_moisture_norm * weights['soil_moisture'],
-            'Steep slope': slope_norm * weights['slope'],
-            'High elevation': elevation_norm * weights['elevation'],
-            'Historical risk': historical_risk_norm * weights['historical_risk'],
-            'High tilt': tilt_norm * weights['tilt']
-        }
-        
-        # Sort by contribution and take top 3
-        sorted_drivers = sorted(contributions.items(), key=lambda x: x[1], reverse=True)
-        for driver, contribution in sorted_drivers[:3]:
-            if contribution > 0.1:  # Only include significant contributors
-                drivers.append(driver)
-        
+            action = "Continue routine monitoring."
+        elif risk_score < 50.0:
+            risk_level = "MODERATE"
+            action = "Increase monitoring and verify local ground conditions."
+        elif risk_score < 75.0:
+            risk_level = "HIGH"
+            action = "Prioritize field verification and prepare precautionary response."
+        else:
+            risk_level = "CRITICAL"
+            action = "Immediate field verification and emergency response assessment required."
+
+        # Input signal completeness confidence
+        available_signals = 0
+        if rainfall_24h > 0:
+            available_signals += 1
+        if soil_moisture > 0:
+            available_signals += 1
+        if ground_movement > 0:
+            available_signals += 1
+        confidence = round(0.60 + (available_signals / 3) * 0.30, 2)
+
+        # Contributing drivers for explainability
+        drivers: List[str] = []
+        if rainfall_factor > 0.4:
+            drivers.append("Heavy rainfall")
+        if soil_moisture_factor > 0.5:
+            drivers.append("High soil moisture")
+        if ground_movement_factor > 0.2:
+            drivers.append("Active ground movement")
+        if terrain_probability > 0.5:
+            drivers.append("Steep terrain susceptibility")
         if not drivers:
-            drivers.append("Moderate conditions")
-        
+            drivers.append("Normal baseline conditions")
+
         return {
-            'risk_score': round(risk_score, 2),
-            'risk_level': risk_level,
-            'confidence': round(confidence, 2),
-            'drivers': drivers
+            "terrain_probability": terrain_probability,
+            "rainfall_factor": rainfall_factor,
+            "soil_moisture_factor": soil_moisture_factor,
+            "ground_movement_factor": ground_movement_factor,
+            "risk_probability": round(final_probability, 4),
+            "risk_score": risk_score,
+            "risk_level": risk_level,
+            "confidence": confidence,
+            "recommended_action": action,
+            "drivers": drivers
         }

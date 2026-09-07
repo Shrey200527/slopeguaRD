@@ -1,0 +1,5 @@
+zone_id,population,village_count,road_count,bridge_count,school_count,hospital_count,critical_asset_count
+ZONE_A,194903,987,1189,1319,92,115,7809
+ZONE_B,432503,826,952,1180,34,36,11514
+ZONE_C,403220,1884,2133,2461,146,148,12022
+ZONE_D,3,476,301,380,32,57,3978

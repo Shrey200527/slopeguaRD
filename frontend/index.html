@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#10231f">
+  <title>SlopeGuard | Terrain intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#top" aria-label="SlopeGuard home">
+        <span class="brand-mark">SG</span>
+        <span><strong>SlopeGuard</strong><small>terrain intelligence</small></span>
+      </a>
+      <div class="topbar-meta"><span class="live-dot"></span><span id="connection-label">LOCAL DATA MODE</span><span class="divider"></span><span id="last-updated">WAITING FOR LAYERS</span></div>
+    </header>
+
+    <main id="top" class="workspace">
+      <section class="intro reveal">
+        <div>
+          <p class="eyebrow">GIS feature preview <span>01</span></p>
+          <h1>See the ground<br><em>before it moves.</em></h1>
+        </div>
+        <p class="intro-copy">A working view of the SlopeGuard data pipeline. Pick a place, inspect the terrain layers, and see exactly what the downstream systems can consume.</p>
+      </section>
+
+      <section class="control-strip reveal delay-1" aria-label="Area controls">
+        <div class="control-main">
+          <label for="area-input">Explore a place</label>
+          <div class="search-row">
+            <input id="area-input" type="search" placeholder="e.g. Bengaluru, India" autocomplete="off">
+            <button id="area-button" class="button button-primary" type="button"><span>Find area</span><span aria-hidden="true">↗</span></button>
+          </div>
+        </div>
+        <div class="control-divider"></div>
+        <div class="bbox-control">
+          <label>Or enter WGS84 bounds</label>
+          <div class="bbox-grid">
+            <input id="west" type="number" step="any" placeholder="West" aria-label="West longitude">
+            <input id="south" type="number" step="any" placeholder="South" aria-label="South latitude">
+            <input id="east" type="number" step="any" placeholder="East" aria-label="East longitude">
+            <input id="north" type="number" step="any" placeholder="North" aria-label="North latitude">
+            <button id="bbox-button" class="button button-secondary" type="button">Apply bounds</button>
+          </div>
+        </div>
+      </section>
+
+      <div id="notice" class="notice" role="status" aria-live="polite"></div>
+
+      <section class="dashboard-grid reveal delay-2">
+        <div class="map-panel panel">
+          <div class="panel-heading">
+            <div><p class="eyebrow">Live map</p><h2 id="area-title">Select an area to begin</h2></div>
+            <span id="area-chip" class="status-chip">NO AREA</span>
+          </div>
+          <div id="map" aria-label="Interactive GIS map"></div>
+          <div class="map-footer"><span><i class="legend-swatch risk"></i>Risk zones</span><span><i class="legend-swatch infra"></i>Infrastructure</span><span><i class="legend-swatch vegetation"></i>Vegetation</span><span><i class="legend-swatch sensor"></i>Sensors</span><span class="map-source">© OpenStreetMap contributors</span></div>
+        </div>
+
+        <aside class="side-column">
+          <div class="panel data-panel">
+            <div class="panel-heading compact"><div><p class="eyebrow">Pipeline output</p><h2>Layer inventory</h2></div><span class="count-total" id="total-count">0</span></div>
+            <div class="summary-grid" aria-label="Regional summary">
+              <div class="summary-card"><span>Population</span><strong id="population-total">—</strong></div>
+              <div class="summary-card"><span>Infrastructure</span><strong id="infrastructure-total">0</strong></div>
+            </div>
+            <div class="density-panel" aria-label="Vegetation density arrangement">
+              <div class="density-heading"><span>Vegetation arrangement</span><strong id="vegetation-total">0</strong></div>
+              <div id="density-list" class="density-list"></div>
+            </div>
+            <div id="layer-list" class="layer-list"></div>
+          </div>
+          <div class="panel feed-panel">
+            <div class="panel-heading compact"><div><p class="eyebrow">System note</p><h2>Ready for handoff</h2></div><span class="pulse-icon">•</span></div>
+            <p id="feed-copy">Choose a place or BBOX to load the GIS context. The interface reads the same GeoJSON layers that can feed the backend, ML, and IoT modules.</p>
+            <div class="handoff-row"><span>Output format</span><strong>GeoJSON / EPSG:4326</strong></div>
+            <div class="handoff-row"><span>Source</span><strong>OpenStreetMap + public feeds</strong></div>
+          </div>
+        </aside>
+      </section>
+    </main>
+
+    <footer class="footer"><span> SlopeGuard / GIS workspace</span><span>Built for clear decisions under changing ground</span></footer>
+  </div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

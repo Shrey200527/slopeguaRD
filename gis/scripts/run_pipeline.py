@@ -4,10 +4,13 @@ import requests
 
 from .config import geocode_area, load_config, validate_bbox
 from .fetch_osm import fetch as fetch_osm
+from .fetch_historical_landslides import fetch as fetch_historical_landslides
 from .fetch_risk_data import fetch as fetch_risk
 from .fetch_sensors import fetch as fetch_sensors
 from .fetch_terrain import fetch as fetch_terrain
 from .fetch_vegetation import fetch as fetch_vegetation
+from .fetch_zones import fetch as fetch_zones
+from .generate_exposure import generate as generate_exposure
 from .process_layers import process
 from .validate_geojson import validate_all
 
@@ -22,12 +25,16 @@ def run(
         config["bbox"] = validate_bbox(bbox)
     elif area is not None:
         config["bbox"] = geocode_area(area, config)
+    config["selected_area"] = area
+    fetch_zones(config, area)
     fetch_osm(config)
     fetch_risk(config)
+    fetch_historical_landslides(config)
     fetch_sensors(config)
     fetch_terrain(config)
     fetch_vegetation(config)
     process(config)
+    generate_exposure(config)
     validate_all(config)
     print("GIS pipeline completed and GeoJSON validation passed")
 

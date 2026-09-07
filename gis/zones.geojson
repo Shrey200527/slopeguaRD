@@ -1,0 +1,40 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              91.5623082,
+              26.650863
+            ],
+            [
+              97.3950905,
+              26.650863
+            ],
+            [
+              97.3950905,
+              29.3745566
+            ],
+            [
+              91.5623082,
+              29.3745566
+            ],
+            [
+              91.5623082,
+              26.650863
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "zone_id": "zone-arunachal-pradesh-india",
+        "name": "Arunachal Pradesh, India",
+        "source": "runtime bounding box"
+      }
+    }
+  ]
+}

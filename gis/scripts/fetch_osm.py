@@ -21,7 +21,7 @@ def build_query(bbox: list[float]) -> str:
   nwr[waterway]({area});
   nwr[bridge]({area});
 );
-out center tags;"""
+out center tags geom;"""
 
 
 def fetch(config: dict) -> Path:

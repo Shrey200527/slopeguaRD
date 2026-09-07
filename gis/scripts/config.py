@@ -6,6 +6,7 @@ import yaml
 
 
 GIS_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = GIS_ROOT.parent
 DEFAULT_GEOCODING_URL = "https://nominatim.openstreetmap.org/search"
 DEFAULT_USER_AGENT = "SlopeGuard-GIS/1.0"
 
@@ -33,6 +34,10 @@ def load_config(path: str | Path = GIS_ROOT / "config" / "settings.yaml") -> dic
 
 def path_from_config(config: dict[str, Any], key: str) -> Path:
     return GIS_ROOT / config.get("outputs", {}).get(key, key)
+
+
+def exposure_path(config: dict[str, Any]) -> Path:
+    return REPO_ROOT / config.get("outputs", {}).get("exposure_csv", "data/processed/exposure.csv")
 
 
 def require_bbox(config: dict[str, Any]) -> list[float]:

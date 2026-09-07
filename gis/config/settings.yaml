@@ -10,6 +10,7 @@ sources:
   geocoding_url: https://nominatim.openstreetmap.org/search
   user_agent: SlopeGuard-GIS/1.0
   risk_geojson_url: null
+  historical_landslides_geojson_url: null
   sensors_geojson_url: null
   terrain_geojson_url: null
   # Vegetation is fetched from OSM land-cover tags by fetch_vegetation.py.
@@ -20,3 +21,4 @@ outputs:
   raw_dir: raw
   processed_dir: processed
   layers_dir: .
+  exposure_csv: data/processed/exposure.csv

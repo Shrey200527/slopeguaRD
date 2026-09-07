@@ -1,8 +1,31 @@
-# SlopeGuard GIS Pipeline
+# SlopeGuard Member 2 GIS and Exposure
 
-This module fetches real geographic data and publishes standardized GeoJSON layers for downstream SlopeGuard services. It is self-contained under `gis/` and does not modify or require the backend, frontend, ML, or IoT modules.
+Member 2 provides geographic context and exposure facts: where the selected area is, which villages, roads, bridges, infrastructure assets, sensors, and verified historical landslides are present, and how those entities aggregate by canonical zone. This module does not calculate risk, susceptibility, priority, urgency, or recommended actions.
 
-## Setup
+All published GIS layers use WGS84 / EPSG:4326 GeoJSON.
+
+## Required outputs
+
+- `zones.geojson`: canonical geographic zone(s) with stable `zone_id` and `name`; no risk classification.
+- `villages.geojson`: settlements with IDs, names, coordinates, population when verified, and `zone_id`.
+- `roads.geojson`: OSM roads with IDs, names, road types, status, and `zone_id`.
+- `bridges.geojson`: bridge points with IDs, coordinates, status, criticality, and `zone_id`.
+- `critical_infrastructure.geojson`: schools, hospitals, emergency services, utilities, and other mapped assets.
+- `sensors.geojson`: sensor locations only; no fabricated live readings.
+- `historical_landslides.geojson`: verified historical events only; empty when no configured source is available.
+- `data/processed/exposure.csv`: population and asset counts by zone, without risk scores.
+
+Optional reference layers are preserved as `vegetation.geojson`, `terrain.geojson`, and `risk_zones.geojson`. They are not Member 2 risk predictions.
+
+## Sources and limitations
+
+- OpenStreetMap Overpass API supplies settlements, roads, bridges, and mapped infrastructure and requires ODbL attribution.
+- Nominatim supplies the selected place boundary when `--area` is used. If a boundary polygon is unavailable, the selected BBOX becomes the canonical zone geometry.
+- Historical landslide source status as of 2026-09-07: no verified public GeoJSON source is configured or accessed. `historical_landslides_geojson_url` remains unset, so `historical_landslides.geojson` is an empty valid collection. Configure a verified dataset URL in `config/settings.yaml` before publishing historical events.
+- Population is read only from source `population` tags. Missing or unverified population remains `null` and contributes zero to numeric exposure aggregation.
+- Sensors, terrain, and risk-zone layers remain empty unless a real source or explicit sample configuration is provided.
+
+## Setup and run
 
 From the repository root:
 
@@ -12,30 +35,28 @@ python -m venv .venv
 pip install -r gis\requirements.txt
 ```
 
-The configured `bbox` is optional and may remain `null`. Select an area at runtime with either a WGS84 bounding box or a place name.
-
-## Data sources
-
-- OpenStreetMap through the Overpass API provides villages, roads, bridges, and tagged critical infrastructure.
-- OpenStreetMap land-cover tags provide vegetation polygons and lines for forests, scrub, grassland, wetlands, orchards, plantations, and related classes. The pipeline derives a coarse `vegetation_density` property (`high`, `medium`, or `low`) from those tags.
-- `risk_geojson_url` accepts a real public hazard or landslide GeoJSON source.
-- `sensors_geojson_url` accepts real sensor observations or locations. Without a configured source, `sensors.geojson` is an empty valid collection; no coordinates are fabricated.
-- Terrain can be loaded from `terrain_geojson_url`, or elevation samples can be requested from the configured OpenTopoData endpoint using explicitly configured `terrain_sample_points`.
-
-Respect the terms, attribution, rate limits, and access policies of every upstream provider. OpenStreetMap data requires attribution under the ODbL.
-
-## Run
+Run from inside `gis/` with a runtime-selected area:
 
 ```powershell
-python -m scripts.run_pipeline --bbox 77.4 12.8 77.8 13.2
-python -m scripts.run_pipeline --area "Bengaluru, India"
-python -m scripts.validate_geojson
+py -m scripts.run_pipeline --area "Arunachal Pradesh, India"
+py -m scripts.run_pipeline --bbox 91.5 26.6 97.4 29.4
+py -m scripts.validate_geojson
 ```
 
-Run these commands from inside `gis/`. Use `--config path\to\settings.yaml` with either location option to select another configuration. A configured numeric `bbox` remains a backward-compatible fallback when neither option is provided.
+The configured `bbox` may remain `null`. A numeric configured BBOX is still supported as a fallback. `--area` resolves a place name through Nominatim and reports clear errors for missing or ambiguous results.
 
-`--area` uses the configured Nominatim geocoding endpoint. If no result is found, multiple results are returned, or the service returns an invalid bounding box, the command exits with a clear error and does not start the data fetchers. The geocoding service requires a descriptive User-Agent and is subject to its usage policy.
+## Exposure generation
 
-## Output contract
+The pipeline creates `data/processed/exposure.csv` with:
 
-Every output is a WGS84 GeoJSON `FeatureCollection`. Each feature has a `properties` object and retains source identifiers where available. Published layers are `risk_zones.geojson`, `villages.geojson`, `roads.geojson`, `bridges.geojson`, `infrastructure.geojson`, `vegetation.geojson`, `sensors.geojson`, and `terrain.geojson`.
+```text
+zone_id,population,village_count,road_count,bridge_count,school_count,hospital_count,critical_asset_count
+```
+
+Rows are aggregated from the normalized GIS layers by `zone_id`. The file contains exposure facts only and does not include risk or priority calculations.
+
+## Validation
+
+`python -m scripts.validate_geojson` checks GeoJSON structure, WGS84 coordinate ranges, duplicate IDs, required Member 2 properties, non-negative population values, valid zone references, coordinate/property agreement, and point-in-zone consistency for polygon zones.
+
+Respect the terms, attribution, rate limits, and access policies of every upstream provider. Access dates and URLs for any configured historical landslide source should be recorded in the configuration and project documentation.

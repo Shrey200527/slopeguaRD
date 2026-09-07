@@ -1,0 +1,21 @@
+project_name: SlopeGuard
+area_name: configure-study-area
+
+# Optional fallback: [west, south, east, north] in WGS84 decimal degrees.
+# Prefer --bbox or --area at runtime when processing a user-selected area.
+bbox: null
+
+sources:
+  overpass_url: https://overpass-api.de/api/interpreter
+  geocoding_url: https://nominatim.openstreetmap.org/search
+  user_agent: SlopeGuard-GIS/1.0
+  risk_geojson_url: null
+  sensors_geojson_url: null
+  terrain_geojson_url: null
+  elevation_url: https://api.opentopodata.org/v1/aster30m
+  terrain_sample_points: []
+
+outputs:
+  raw_dir: raw
+  processed_dir: processed
+  layers_dir: .

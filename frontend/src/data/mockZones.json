@@ -1,6 +1,6 @@
 [
   {
-    "id": "ZONE-A",
+    "id": "ZONE_A",
     "name": "Zone A",
     "risk": 86,
     "confidence": 92,
@@ -21,7 +21,7 @@
     "recommendedAction": "Prepare evacuation and dispatch field verification team"
   },
   {
-    "id": "ZONE-B",
+    "id": "ZONE_B",
     "name": "Zone B",
     "risk": 73,
     "confidence": 88,
@@ -42,7 +42,7 @@
     "recommendedAction": "Verify field conditions and monitor continuously"
   },
   {
-    "id": "ZONE-C",
+    "id": "ZONE_C",
     "name": "Zone C",
     "risk": 57,
     "confidence": 84,
@@ -62,7 +62,7 @@
     "recommendedAction": "Continue monitoring sensor readings"
   },
   {
-    "id": "ZONE-D",
+    "id": "ZONE_D",
     "name": "Zone D",
     "risk": 42,
     "confidence": 91,

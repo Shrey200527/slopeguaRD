@@ -40,3 +40,35 @@ async def get_alerts(
         return alerts
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to retrieve alerts: {str(e)}")
+
+@router.post("/{alert_id}/acknowledge", response_model=AlertResponse)
+async def acknowledge_alert(
+    alert_id: int,
+    db: Session = Depends(get_db),
+):
+    alert = (
+        db.query(Alert)
+        .filter(Alert.id == alert_id)
+        .first()
+    )
+
+    if not alert:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Alert '{alert_id}' not found",
+        )
+
+    try:
+        alert.status = "ACKNOWLEDGED"
+
+        db.commit()
+        db.refresh(alert)
+
+        return alert
+
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to acknowledge alert: {str(exc)}",
+        ) from exc

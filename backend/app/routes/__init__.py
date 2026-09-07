@@ -5,6 +5,7 @@ from backend.app.routes.priority import router as priority_router
 from backend.app.routes.field_report import router as field_report_router
 from backend.app.routes.simulation import router as simulation_router
 from backend.app.routes.sync import router as sync_router
+from backend.app.routes.zones import router as zones_router
 
 __all__ = [
     "sensor_data_router",
@@ -14,4 +15,5 @@ __all__ = [
     "field_report_router",
     "simulation_router",
     "sync_router",
-]
+    "zones_router",
+]

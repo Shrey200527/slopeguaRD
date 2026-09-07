@@ -9,7 +9,8 @@ from backend.app.routes import (
     priority_router,
     field_report_router,
     simulation_router,
-    sync_router
+    sync_router,
+    zones_router,
 )
 
 app = FastAPI(
@@ -49,6 +50,7 @@ app.include_router(priority_router)
 app.include_router(field_report_router)
 app.include_router(simulation_router)
 app.include_router(sync_router)
+app.include_router(zones_router)
 
 
 @app.get("/")

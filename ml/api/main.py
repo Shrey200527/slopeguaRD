@@ -6,9 +6,14 @@ import pandas as pd
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
-from api.terrain import get_terrain
+from ml.api.terrain import get_terrain
 
-
+class LocationPredictionRequest(BaseModel):
+    latitude: float
+    longitude: float
+    rainfall_24h: float = 0.0
+    soil_moisture: float = 0.0
+    ground_movement: float = 0.0
 # ============================================================
 # PATHS
 # ============================================================
@@ -356,7 +361,38 @@ def predict(request: PredictionRequest):
         },
     }
 
+@app.post("/predict/location")
+def predict_location(payload: LocationPredictionRequest):
+    terrain = get_terrain(payload.latitude, payload.longitude)
 
+    result = calculate_risk(
+        elevation=terrain["elevation_m"],
+        slope=terrain["slope_deg"],
+        rainfall_24h=payload.rainfall_24h,
+        soil_moisture=payload.soil_moisture,
+        ground_movement=payload.ground_movement,
+    )
+
+    return {
+        "location": {
+            "latitude": payload.latitude,
+            "longitude": payload.longitude,
+        },
+        "terrain": {
+            "elevation_m": terrain["elevation_m"],
+            "slope_deg": terrain["slope_deg"],
+        },
+        "dynamic_inputs": {
+            "rainfall_24h_mm": payload.rainfall_24h,
+            "soil_moisture_percent": payload.soil_moisture,
+            "ground_movement": payload.ground_movement,
+        },
+        "risk": result,
+        "model": {
+            "type": "XGBoost",
+            "features": ["elevation", "slope"],
+        },
+    }
 # ============================================================
 # IOT SENSOR ENDPOINT
 # ============================================================

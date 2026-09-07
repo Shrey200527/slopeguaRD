@@ -21,3 +21,10 @@ Thumbs.db
 
 # Logs
 *.log
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Raw/local geospatial data
+ml/data/raw/gsi/landslide_inventory/

@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from datetime import datetime
 from typing import List, Optional
-
+from pydantic import Field
 
 class OfflineReportItem(BaseModel):
     zone_id: str
@@ -14,7 +14,7 @@ class OfflineReportItem(BaseModel):
 
 
 class SyncRequest(BaseModel):
-    reports: List[OfflineReportItem] = []
+    reports: List[OfflineReportItem] = Field(default_factory=list)
 
 
 class SyncResponse(BaseModel):

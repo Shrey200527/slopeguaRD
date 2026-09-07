@@ -156,9 +156,6 @@ export default function Home() {
     simulated_priority_score: number;
   } | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
-
-  const [backendPrediction, setBackendPrediction] =
-    useState<BackendPrediction | null>(null);
   const [predictionLoading, setPredictionLoading] = useState(false);
 
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -312,7 +309,11 @@ export default function Home() {
   }, [mergeBackendZoneData]);
 
   useEffect(() => {
-    refreshBackendData();
+    const timer = window.setTimeout(() => {
+      void refreshBackendData();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [refreshBackendData]);
 
   useEffect(() => {
@@ -326,18 +327,17 @@ export default function Home() {
   }, [autoRefresh, refreshBackendData]);
 
   useEffect(() => {
-    // Reset scenario inputs to neutral defaults when zone changes.
-    // We do NOT seed them from zone mock data — sliders are user-defined,
-    // not live sensor readings.
-    setRainfall(100);
-    setSoilMoisture(60);
-    setGroundTilt(2.0);
-    setSimulationResult(null);
-  }, [selectedZone.id]);
+    const timer = window.setTimeout(() => {
+      setRainfall(100);
+      setSoilMoisture(60);
+      setGroundTilt(2.0);
+      setSimulationResult(null);
+    }, 0);
 
-  useEffect(() => {
-    setBackendPrediction(predictionsByZone[selectedZoneId] ?? null);
-  }, [selectedZoneId, predictionsByZone]);
+    return () => window.clearTimeout(timer);
+  }, [selectedZoneId]);
+
+  const backendPrediction = predictionsByZone[selectedZoneId] ?? null;
 
   const criticalZones = zones.filter(
     (zone) => hasPrediction(zone) && zone.status === "CRITICAL"
@@ -366,9 +366,9 @@ export default function Home() {
 
   const selectedZoneSensor = useMemo(() => {
     return sensorData
-      .filter((item: any) => item.zone_id === selectedZone.id)
+      .filter((item) => item.zone_id === selectedZone.id)
       .sort(
-        (a: any, b: any) =>
+        (a, b) =>
           new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
       )[0];
   }, [sensorData, selectedZone.id]);
@@ -438,7 +438,6 @@ export default function Home() {
         [prediction.zone_id]: prediction,
       };
       setPredictionsByZone(updatedPredictions);
-      setBackendPrediction(prediction);
 
       setBackendRiskHistory((current) => {
         const newPoint = {

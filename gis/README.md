@@ -17,6 +17,7 @@ The configured `bbox` is optional and may remain `null`. Select an area at runti
 ## Data sources
 
 - OpenStreetMap through the Overpass API provides villages, roads, bridges, and tagged critical infrastructure.
+- OpenStreetMap land-cover tags provide vegetation polygons and lines for forests, scrub, grassland, wetlands, orchards, plantations, and related classes. The pipeline derives a coarse `vegetation_density` property (`high`, `medium`, or `low`) from those tags.
 - `risk_geojson_url` accepts a real public hazard or landslide GeoJSON source.
 - `sensors_geojson_url` accepts real sensor observations or locations. Without a configured source, `sensors.geojson` is an empty valid collection; no coordinates are fabricated.
 - Terrain can be loaded from `terrain_geojson_url`, or elevation samples can be requested from the configured OpenTopoData endpoint using explicitly configured `terrain_sample_points`.
@@ -37,4 +38,4 @@ Run these commands from inside `gis/`. Use `--config path\to\settings.yaml` with
 
 ## Output contract
 
-Every output is a WGS84 GeoJSON `FeatureCollection`. Each feature has a `properties` object and retains source identifiers where available. Published layers are `risk_zones.geojson`, `villages.geojson`, `roads.geojson`, `bridges.geojson`, `infrastructure.geojson`, `sensors.geojson`, and `terrain.geojson`.
+Every output is a WGS84 GeoJSON `FeatureCollection`. Each feature has a `properties` object and retains source identifiers where available. Published layers are `risk_zones.geojson`, `villages.geojson`, `roads.geojson`, `bridges.geojson`, `infrastructure.geojson`, `vegetation.geojson`, `sensors.geojson`, and `terrain.geojson`.

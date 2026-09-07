@@ -30,6 +30,7 @@ Edit the `DATA_ROOT` constant at the top of `app.js` to point at another GeoJSON
 - `infrastructure.geojson`
 - `sensors.geojson`
 - `terrain.geojson`
+- `vegetation.geojson`
 
 The frontend expects WGS84 GeoJSON `FeatureCollection` files and displays empty collections as zero-count layers rather than inventing data.
 

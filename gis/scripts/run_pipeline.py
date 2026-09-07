@@ -7,6 +7,7 @@ from .fetch_osm import fetch as fetch_osm
 from .fetch_risk_data import fetch as fetch_risk
 from .fetch_sensors import fetch as fetch_sensors
 from .fetch_terrain import fetch as fetch_terrain
+from .fetch_vegetation import fetch as fetch_vegetation
 from .process_layers import process
 from .validate_geojson import validate_all
 
@@ -25,6 +26,7 @@ def run(
     fetch_risk(config)
     fetch_sensors(config)
     fetch_terrain(config)
+    fetch_vegetation(config)
     process(config)
     validate_all(config)
     print("GIS pipeline completed and GeoJSON validation passed")

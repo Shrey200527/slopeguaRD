@@ -5,7 +5,7 @@ from typing import Any
 from .config import load_config, path_from_config
 
 
-LAYER_NAMES = ("risk_zones", "villages", "roads", "bridges", "infrastructure", "sensors", "terrain")
+LAYER_NAMES = ("risk_zones", "villages", "roads", "bridges", "infrastructure", "vegetation", "sensors", "terrain")
 
 
 def collection(features: list[dict[str, Any]]) -> dict[str, Any]:
@@ -73,6 +73,7 @@ def process(config: dict) -> list[Path]:
     layers["risk_zones"] = read_collection(raw_dir / "risk_zones.geojson").get("features", [])
     layers["sensors"] = read_collection(raw_dir / "sensors.geojson").get("features", [])
     layers["terrain"] = read_collection(raw_dir / "terrain.geojson").get("features", [])
+    layers["vegetation"] = read_collection(raw_dir / "vegetation.geojson").get("features", [])
     paths = []
     for name in LAYER_NAMES:
         output_path = output_dir / f"{name}.geojson"

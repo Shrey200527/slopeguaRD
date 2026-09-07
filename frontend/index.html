@@ -60,7 +60,7 @@
             <span id="area-chip" class="status-chip">NO AREA</span>
           </div>
           <div id="map" aria-label="Interactive GIS map"></div>
-          <div class="map-footer"><span><i class="legend-swatch risk"></i>Risk zones</span><span><i class="legend-swatch infra"></i>Infrastructure</span><span><i class="legend-swatch sensor"></i>Sensors</span><span class="map-source">© OpenStreetMap contributors</span></div>
+          <div class="map-footer"><span><i class="legend-swatch risk"></i>Risk zones</span><span><i class="legend-swatch infra"></i>Infrastructure</span><span><i class="legend-swatch vegetation"></i>Vegetation</span><span><i class="legend-swatch sensor"></i>Sensors</span><span class="map-source">© OpenStreetMap contributors</span></div>
         </div>
 
         <aside class="side-column">
@@ -69,6 +69,10 @@
             <div class="summary-grid" aria-label="Regional summary">
               <div class="summary-card"><span>Population</span><strong id="population-total">—</strong></div>
               <div class="summary-card"><span>Infrastructure</span><strong id="infrastructure-total">0</strong></div>
+            </div>
+            <div class="density-panel" aria-label="Vegetation density arrangement">
+              <div class="density-heading"><span>Vegetation arrangement</span><strong id="vegetation-total">0</strong></div>
+              <div id="density-list" class="density-list"></div>
             </div>
             <div id="layer-list" class="layer-list"></div>
           </div>

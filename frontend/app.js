@@ -5,6 +5,7 @@ const LAYER_DEFINITIONS = [
   { key: 'roads', label: 'Road network', className: 'roads' },
   { key: 'bridges', label: 'Bridges', className: 'bridges' },
   { key: 'infrastructure', label: 'Critical infrastructure', className: 'infrastructure' },
+  { key: 'vegetation', label: 'Vegetation density', className: 'vegetation' },
   { key: 'sensors', label: 'Sensor locations', className: 'sensors' },
   { key: 'terrain', label: 'Terrain samples', className: 'terrain' },
 ];
@@ -25,6 +26,8 @@ const elements = {
   totalCount: document.querySelector('#total-count'),
   populationTotal: document.querySelector('#population-total'),
   infrastructureTotal: document.querySelector('#infrastructure-total'),
+  vegetationTotal: document.querySelector('#vegetation-total'),
+  densityList: document.querySelector('#density-list'),
   layerList: document.querySelector('#layer-list'),
   lastUpdated: document.querySelector('#last-updated'),
   feedCopy: document.querySelector('#feed-copy'),
@@ -78,8 +81,19 @@ async function loadGeoJson(layer) {
 }
 
 function styleFor(key) {
-  const colors = { risk_zones: '#e5784d', villages: '#426b4d', roads: '#9b8966', bridges: '#e6ba4f', infrastructure: '#d68b48', sensors: '#4f91a3', terrain: '#7c9d72' };
+  const colors = { risk_zones: '#e5784d', villages: '#426b4d', roads: '#9b8966', bridges: '#e6ba4f', infrastructure: '#d68b48', vegetation: '#2f8f5b', sensors: '#4f91a3', terrain: '#7c9d72' };
+  if (key === 'risk_zones') {
+    return { color: '#b9362b', weight: 4, fillColor: '#ef5b45', fillOpacity: .52, opacity: 1 };
+  }
   return { color: colors[key] || '#426b4d', weight: key === 'roads' ? 2 : 3, fillOpacity: .26, opacity: .8 };
+}
+
+function featureStyle(key, feature) {
+  if (key !== 'vegetation') return styleFor(key);
+  const density = feature.properties?.vegetation_density;
+  const colors = { high: '#146b3a', medium: '#2f8f5b', low: '#82b366' };
+  const color = colors[density] || colors.medium;
+  return { color, fillColor: color, weight: 2, fillOpacity: density === 'high' ? .5 : .34, opacity: .9 };
 }
 
 function populationFromVillages(data) {
@@ -94,6 +108,20 @@ function populationFromVillages(data) {
 function formatPopulation(population, hasPopulationData) {
   if (!hasPopulationData) return '—';
   return population.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+}
+
+function renderDensityArrangement(data) {
+  const counts = { high: 0, medium: 0, low: 0 };
+  (data?.features || []).forEach((feature) => {
+    const density = feature.properties?.vegetation_density;
+    if (density in counts) counts[density] += 1;
+  });
+  const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
+  elements.vegetationTotal.textContent = total.toLocaleString('en-IN');
+  elements.densityList.innerHTML = Object.entries(counts).map(([density, count]) => {
+    const percentage = total ? Math.round((count / total) * 100) : 0;
+    return `<div class="density-row"><div class="density-label"><i class="density-dot ${density}"></i><span>${density}</span><strong>${percentage}%</strong></div><div class="density-track"><span class="density-fill ${density}" style="width: ${percentage}%"></span></div><span class="density-count">${count.toLocaleString('en-IN')}</span></div>`;
+  }).join('');
 }
 
 function renderLayerList() {
@@ -114,6 +142,7 @@ function renderLayerList() {
   });
   elements.populationTotal.textContent = formatPopulation(population, hasPopulationData);
   elements.infrastructureTotal.textContent = (layerData.get('infrastructure')?.features?.length || 0).toLocaleString('en-IN');
+  renderDensityArrangement(layerData.get('vegetation'));
 }
 
 async function loadLayers(bbox) {
@@ -125,10 +154,12 @@ async function loadLayers(bbox) {
   layerGroups.clear();
   results.forEach(([key, data]) => {
     layerData.set(key, data);
-    const group = L.geoJSON(data, { style: styleFor(key), pointToLayer: (_feature, latlng) => L.circleMarker(latlng, { ...styleFor(key), radius: 6 }) }).bindPopup((feature) => `<strong>${feature.properties?.name || feature.properties?.amenity || key}</strong><br><small>Source: ${feature.properties?.source || 'GeoJSON layer'}</small>`);
+    const group = L.geoJSON(data, { style: (feature) => featureStyle(key, feature), pointToLayer: (feature, latlng) => L.circleMarker(latlng, { ...featureStyle(key, feature), radius: 6 }) }).bindPopup((feature) => `<strong>${feature.properties?.name || feature.properties?.amenity || key}</strong><br><small>${feature.properties?.vegetation_density ? `Density: ${feature.properties.vegetation_density}<br>` : ''}Source: ${feature.properties?.source || 'GeoJSON layer'}</small>`);
     layerGroups.set(key, group);
     group.addTo(map);
   });
+  layerGroups.get('risk_zones')?.bringToFront();
+  layerGroups.get('vegetation')?.bringToBack();
   renderLayerList();
   fitToBbox(bbox);
   elements.lastUpdated.textContent = `UPDATED ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;

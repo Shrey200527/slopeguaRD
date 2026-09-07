@@ -12,6 +12,7 @@ sources:
   risk_geojson_url: null
   sensors_geojson_url: null
   terrain_geojson_url: null
+  # Vegetation is fetched from OSM land-cover tags by fetch_vegetation.py.
   elevation_url: https://api.opentopodata.org/v1/aster30m
   terrain_sample_points: []
 

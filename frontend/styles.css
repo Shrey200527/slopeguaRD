@@ -65,9 +65,11 @@ h2 { margin-bottom: 0; font-size: 19px; letter-spacing: -.8px; }
 .status-chip { padding: 7px 9px; color: var(--moss); background: #e5eedf; font: 10px "DM Mono", monospace; letter-spacing: .6px; white-space: nowrap; }
 #map { height: 510px; background: #dce5d8; }
 .map-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 17px; padding-top: 13px; }
-.legend-swatch { display: inline-block; width: 8px; height: 8px; margin-right: 5px; background: var(--orange); }
+.legend-swatch { display: inline-block; width: 10px; height: 10px; margin-right: 5px; background: #ef5b45; border: 2px solid #b9362b; }
 .legend-swatch.infra { background: var(--yellow); }
 .legend-swatch.sensor { background: var(--blue); }
+.legend-swatch.vegetation { background: #2f8f5b; border-color: #216b43; }
+.legend-swatch.vegetation { box-shadow: inset 0 0 0 2px #82b366; }
 .map-source { margin-left: auto; color: #9aa7a1; }
 .side-column { display: flex; flex-direction: column; gap: 18px; }
 .data-panel, .feed-panel { padding: 22px; }
@@ -76,13 +78,24 @@ h2 { margin-bottom: 0; font-size: 19px; letter-spacing: -.8px; }
 .summary-card { padding: 10px; background: #f0f2e9; border: 1px solid var(--line); }
 .summary-card span { display: block; color: var(--muted); font: 9px "DM Mono", monospace; letter-spacing: .55px; text-transform: uppercase; }
 .summary-card strong { display: block; margin-top: 5px; color: var(--moss-dark); font: 500 18px "DM Mono", monospace; }
+.density-panel { padding: 12px 0 15px; border-bottom: 1px solid var(--line); }
+.density-heading { display: flex; justify-content: space-between; margin-bottom: 11px; color: var(--muted); font: 9px "DM Mono", monospace; letter-spacing: .55px; text-transform: uppercase; }
+.density-heading strong { color: var(--moss-dark); font-weight: 500; }
+.density-list { display: grid; gap: 8px; }
+.density-row { display: grid; grid-template-columns: minmax(105px, 1fr) 1.2fr auto; align-items: center; gap: 8px; }
+.density-label { display: flex; align-items: center; gap: 6px; color: var(--ink); font-size: 10px; text-transform: capitalize; }
+.density-label strong { margin-left: auto; color: var(--muted); font: 10px "DM Mono", monospace; font-weight: 400; }
+.density-dot { width: 7px; height: 7px; border-radius: 50%; background: #82b366; }.density-dot.medium { background: #2f8f5b; }.density-dot.high { background: #146b3a; }
+.density-track { height: 5px; overflow: hidden; background: #e7ebe0; }.density-fill { display: block; height: 100%; min-width: 0; background: #82b366; }.density-fill.medium { background: #2f8f5b; }.density-fill.high { background: #146b3a; }
+.density-count { color: var(--muted); font: 10px "DM Mono", monospace; }
 .layer-list { display: grid; gap: 5px; }
 .layer-row { display: grid; grid-template-columns: 12px 1fr auto; align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid var(--line); }
 .layer-row:first-child { border-top: 0; }
 .layer-toggle { position: absolute; opacity: 0; pointer-events: none; }
 .layer-label { display: flex; align-items: center; gap: 9px; min-width: 0; color: var(--ink); font-size: 12px; cursor: pointer; }
 .layer-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--orange); }
-.layer-dot.villages { background: var(--moss); }.layer-dot.roads { background: #9b8966; }.layer-dot.bridges { background: var(--yellow); }.layer-dot.infrastructure { background: #d68b48; }.layer-dot.sensors { background: var(--blue); }.layer-dot.terrain { background: #7c9d72; }
+.layer-dot.risk { background: #b9362b; box-shadow: 0 0 0 3px rgba(239, 91, 69, .2); }
+.layer-dot.villages { background: var(--moss); }.layer-dot.roads { background: #9b8966; }.layer-dot.bridges { background: var(--yellow); }.layer-dot.infrastructure { background: #d68b48; }.layer-dot.vegetation { background: #2f8f5b; }.layer-dot.sensors { background: var(--blue); }.layer-dot.terrain { background: #7c9d72; }
 .layer-count { color: var(--muted); font: 11px "DM Mono", monospace; }
 .layer-status { width: 12px; height: 12px; border: 1px solid var(--line); background: var(--panel); }
 .layer-toggle:checked + .layer-label + .layer-status { border-color: var(--moss); background: var(--moss); box-shadow: inset 0 0 0 3px var(--panel); }

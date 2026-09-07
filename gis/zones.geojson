@@ -8,32 +8,149 @@
         "coordinates": [
           [
             [
-              91.5623082,
-              26.650863
+              93.525,
+              27.004
             ],
             [
-              97.3950905,
-              26.650863
+              93.685,
+              27.004
             ],
             [
-              97.3950905,
-              29.3745566
+              93.685,
+              27.163999999999998
             ],
             [
-              91.5623082,
-              29.3745566
+              93.525,
+              27.163999999999998
             ],
             [
-              91.5623082,
-              26.650863
+              93.525,
+              27.004
             ]
           ]
         ]
       },
       "properties": {
-        "zone_id": "zone-arunachal-pradesh-india",
-        "name": "Arunachal Pradesh, India",
-        "source": "runtime bounding box"
+        "zone_id": "ZONE_A",
+        "name": "Zone A",
+        "zone_type": "operational_monitoring_zone",
+        "source": "SlopeGuard prototype configuration",
+        "latitude": 27.084,
+        "longitude": 93.605
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              91.779,
+              27.506
+            ],
+            [
+              91.939,
+              27.506
+            ],
+            [
+              91.939,
+              27.665999999999997
+            ],
+            [
+              91.779,
+              27.665999999999997
+            ],
+            [
+              91.779,
+              27.506
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "zone_id": "ZONE_B",
+        "name": "Zone B",
+        "zone_type": "operational_monitoring_zone",
+        "source": "SlopeGuard prototype configuration",
+        "latitude": 27.586,
+        "longitude": 91.859
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              95.247,
+              27.986
+            ],
+            [
+              95.407,
+              27.986
+            ],
+            [
+              95.407,
+              28.145999999999997
+            ],
+            [
+              95.247,
+              28.145999999999997
+            ],
+            [
+              95.247,
+              27.986
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "zone_id": "ZONE_C",
+        "name": "Zone C",
+        "zone_type": "operational_monitoring_zone",
+        "source": "SlopeGuard prototype configuration",
+        "latitude": 28.066,
+        "longitude": 95.327
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              92.56700000000001,
+              26.933000000000003
+            ],
+            [
+              92.727,
+              26.933000000000003
+            ],
+            [
+              92.727,
+              27.093
+            ],
+            [
+              92.56700000000001,
+              27.093
+            ],
+            [
+              92.56700000000001,
+              26.933000000000003
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "zone_id": "ZONE_D",
+        "name": "Zone D",
+        "zone_type": "operational_monitoring_zone",
+        "source": "SlopeGuard prototype configuration",
+        "latitude": 27.013,
+        "longitude": 92.647
       }
     }
   ]

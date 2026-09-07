@@ -32,3 +32,5 @@ Edit the `DATA_ROOT` constant at the top of `app.js` to point at another GeoJSON
 - `terrain.geojson`
 
 The frontend expects WGS84 GeoJSON `FeatureCollection` files and displays empty collections as zero-count layers rather than inventing data.
+
+When village features include the OpenStreetMap `population` tag, the dashboard sums and displays that regional population. The infrastructure total and map layer are populated from `infrastructure.geojson`; rerun the GIS pipeline for the selected area after changing the area.

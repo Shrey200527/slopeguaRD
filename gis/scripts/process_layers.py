@@ -32,7 +32,15 @@ def element_geometry(element: dict) -> dict | None:
 
 def process_osm(raw: dict) -> dict[str, list[dict]]:
     layers = {name: [] for name in ("villages", "roads", "bridges", "infrastructure")}
-    infrastructure_keys = {"amenity", "emergency", "healthcare", "power", "public_transport", "man_made"}
+    infrastructure_keys = {
+        "amenity",
+        "emergency",
+        "healthcare",
+        "power",
+        "public_transport",
+        "man_made",
+        "waterway",
+    }
     for element in raw.get("elements", []):
         tags = element.get("tags", {})
         geometry = element_geometry(element)
@@ -46,7 +54,7 @@ def process_osm(raw: dict) -> dict[str, list[dict]]:
             layers["roads"].append(feature(geometry, properties))
         if tags.get("bridge") or tags.get("man_made") == "bridge":
             layers["bridges"].append(feature(geometry, properties))
-        if infrastructure_keys.intersection(tags):
+        if infrastructure_keys.intersection(tags) or tags.get("bridge") or tags.get("highway") == "construction":
             layers["infrastructure"].append(feature(geometry, properties))
     return layers
 

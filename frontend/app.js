@@ -23,6 +23,8 @@ const elements = {
   areaChip: document.querySelector('#area-chip'),
   notice: document.querySelector('#notice'),
   totalCount: document.querySelector('#total-count'),
+  populationTotal: document.querySelector('#population-total'),
+  infrastructureTotal: document.querySelector('#infrastructure-total'),
   layerList: document.querySelector('#layer-list'),
   lastUpdated: document.querySelector('#last-updated'),
   feedCopy: document.querySelector('#feed-copy'),
@@ -80,6 +82,20 @@ function styleFor(key) {
   return { color: colors[key] || '#426b4d', weight: key === 'roads' ? 2 : 3, fillOpacity: .26, opacity: .8 };
 }
 
+function populationFromVillages(data) {
+  return (data?.features || []).reduce((total, feature) => {
+    const value = feature.properties?.population;
+    if (value === undefined || value === null || value === '') return total;
+    const population = Number(String(value).replace(/,/g, '').trim());
+    return Number.isFinite(population) && population >= 0 ? total + population : total;
+  }, 0);
+}
+
+function formatPopulation(population, hasPopulationData) {
+  if (!hasPopulationData) return '—';
+  return population.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+}
+
 function renderLayerList() {
   elements.layerList.innerHTML = LAYER_DEFINITIONS.map((layer) => {
     const count = layerData.get(layer.key)?.features?.length || 0;
@@ -90,6 +106,14 @@ function renderLayerList() {
     if (toggle.checked) group?.addTo(map); else group?.remove();
   }));
   elements.totalCount.textContent = [...layerData.values()].reduce((total, data) => total + (data.features?.length || 0), 0).toString().padStart(2, '0');
+  const villages = layerData.get('villages');
+  const population = populationFromVillages(villages);
+  const hasPopulationData = (villages?.features || []).some((feature) => {
+    const value = feature.properties?.population;
+    return value !== undefined && value !== null && value !== '' && Number.isFinite(Number(String(value).replace(/,/g, '').trim()));
+  });
+  elements.populationTotal.textContent = formatPopulation(population, hasPopulationData);
+  elements.infrastructureTotal.textContent = (layerData.get('infrastructure')?.features?.length || 0).toLocaleString('en-IN');
 }
 
 async function loadLayers(bbox) {

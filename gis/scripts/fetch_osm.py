@@ -20,6 +20,7 @@ def build_query(bbox: list[float]) -> str:
   nwr[power]({area});
   nwr[public_transport]({area});
   nwr[man_made~\"^(water_tower|communications_tower|works)$\"]({area});
+  nwr[waterway]({area});
 );
 out center tags;"""
 

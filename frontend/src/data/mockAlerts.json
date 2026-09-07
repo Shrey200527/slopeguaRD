@@ -1,0 +1,29 @@
+[
+  {
+    "id": "ALT-001",
+    "zone": "ZONE-A",
+    "zoneName": "Zone A",
+    "severity": "CRITICAL",
+    "message": "Rapid increase in landslide risk",
+    "time": "2 min ago",
+    "acknowledged": false
+  },
+  {
+    "id": "ALT-002",
+    "zone": "ZONE-B",
+    "zoneName": "Zone B",
+    "severity": "HIGH",
+    "message": "Heavy rainfall detected",
+    "time": "8 min ago",
+    "acknowledged": false
+  },
+  {
+    "id": "ALT-003",
+    "zone": "ZONE-C",
+    "zoneName": "Zone C",
+    "severity": "MODERATE",
+    "message": "Soil moisture increasing",
+    "time": "14 min ago",
+    "acknowledged": false
+  }
+]

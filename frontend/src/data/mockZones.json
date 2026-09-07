@@ -1,0 +1,84 @@
+[
+  {
+    "id": "ZONE-A",
+    "name": "Zone A",
+    "risk": 86,
+    "confidence": 92,
+    "lat": 27.084,
+    "lng": 93.605,
+    "rainfall": 142,
+    "soilMoisture": 81,
+    "tilt": 4.8,
+    "population": 12500,
+    "roads": 8,
+    "bridges": 2,
+    "status": "CRITICAL",
+    "reasons": [
+      "Heavy rainfall",
+      "High soil moisture",
+      "Increasing ground tilt"
+    ],
+    "recommendedAction": "Prepare evacuation and dispatch field verification team"
+  },
+  {
+    "id": "ZONE-B",
+    "name": "Zone B",
+    "risk": 73,
+    "confidence": 88,
+    "lat": 27.586,
+    "lng": 91.859,
+    "rainfall": 118,
+    "soilMoisture": 69,
+    "tilt": 3.1,
+    "population": 8700,
+    "roads": 6,
+    "bridges": 1,
+    "status": "HIGH",
+    "reasons": [
+      "Heavy rainfall detected",
+      "Increasing soil moisture",
+      "Moderate ground movement"
+    ],
+    "recommendedAction": "Verify field conditions and monitor continuously"
+  },
+  {
+    "id": "ZONE-C",
+    "name": "Zone C",
+    "risk": 57,
+    "confidence": 84,
+    "lat": 28.066,
+    "lng": 95.327,
+    "rainfall": 86,
+    "soilMoisture": 58,
+    "tilt": 1.9,
+    "population": 5400,
+    "roads": 4,
+    "bridges": 1,
+    "status": "MODERATE",
+    "reasons": [
+      "Rising soil moisture",
+      "Moderate rainfall"
+    ],
+    "recommendedAction": "Continue monitoring sensor readings"
+  },
+  {
+    "id": "ZONE-D",
+    "name": "Zone D",
+    "risk": 42,
+    "confidence": 91,
+    "lat": 27.013,
+    "lng": 92.647,
+    "rainfall": 62,
+    "soilMoisture": 43,
+    "tilt": 0.8,
+    "population": 3200,
+    "roads": 3,
+    "bridges": 0,
+    "status": "LOW",
+    "reasons": [
+      "Low rainfall",
+      "Stable ground movement"
+    ],
+    "recommendedAction": "Routine monitoring"
+  }
+]

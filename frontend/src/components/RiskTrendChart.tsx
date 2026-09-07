@@ -26,7 +26,7 @@ export default function RiskTrendChart({
     <div className="h-[300px] w-full">
       {data.length === 0 ? (
         <div className="flex h-full items-center justify-center text-sm text-slate-400">
-          Waiting for backend sensor data...
+          No backend prediction history available for this zone yet.
         </div>
       ) : (
         <ResponsiveContainer width="100%" height="100%">

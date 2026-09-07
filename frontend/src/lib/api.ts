@@ -1,6 +1,20 @@
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+export class ApiError extends Error {
+  status: number;
+  endpoint: string;
+  detail?: unknown;
+
+  constructor(status: number, endpoint: string, message: string, detail?: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.endpoint = endpoint;
+    this.detail = detail;
+  }
+}
+
 // =============================
 // Generic GET
 // =============================
@@ -11,7 +25,20 @@ export async function apiGet<T>(endpoint: string): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new Error(`GET ${endpoint} failed: ${response.status}`);
+    let detail: unknown = null;
+    let message = `GET ${endpoint} failed (${response.status})`;
+    try {
+      const errorJson = await response.json();
+      detail = errorJson?.detail || errorJson;
+      if (typeof detail === "string") {
+        message += `: ${detail}`;
+      } else if (detail) {
+        message += `: ${JSON.stringify(detail)}`;
+      }
+    } catch {
+      // response body was not JSON
+    }
+    throw new ApiError(response.status, endpoint, message, detail);
   }
 
   return response.json();
@@ -34,7 +61,20 @@ export async function apiPost<T>(
   });
 
   if (!response.ok) {
-    throw new Error(`POST ${endpoint} failed: ${response.status}`);
+    let detail: unknown = null;
+    let message = `POST ${endpoint} failed (${response.status})`;
+    try {
+      const errorJson = await response.json();
+      detail = errorJson?.detail || errorJson;
+      if (typeof detail === "string") {
+        message += `: ${detail}`;
+      } else if (detail) {
+        message += `: ${JSON.stringify(detail)}`;
+      }
+    } catch {
+      // response body was not JSON
+    }
+    throw new ApiError(response.status, endpoint, message, detail);
   }
 
   return response.json();
@@ -93,10 +133,18 @@ export type SimulationResponse = {
 
 export type BackendPrediction = {
   zone_id: string;
+
+  terrain_probability: number;
+  rainfall_factor: number;
+  soil_moisture_factor: number;
+  ground_movement_factor: number;
+
+  risk_probability: number;
   risk_score: number;
   risk_level: string;
   confidence: number;
-  drivers: string[];
+
+  recommended_action: string;
 };
 
 // =============================
@@ -117,6 +165,23 @@ export async function createAlertApi(data: {
     severity: data.severity,
     message: data.message,
   });
+}
+
+export async function acknowledgeAlertApi(alertId: string | number) {
+  try {
+    return await apiPost<BackendAlert>(`/alerts/${alertId}/acknowledge`, {});
+  } catch {
+    // If backend doesn't support POST /acknowledge, attempt PATCH
+    const res = await fetch(`${API_URL}/alerts/${alertId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "ACKNOWLEDGED" }),
+    });
+    if (!res.ok) {
+      throw new Error(`Acknowledge alert failed: ${res.status}`);
+    }
+    return res.json();
+  }
 }
 
 // =============================
@@ -182,40 +247,28 @@ export async function postFieldReportApi(data: {
 
 export async function postSimulationApi(data: {
   zoneId: string;
-  rainfall: number;
+  rainfall24h: number;
   soilMoisture: number;
-  slope: number;
-  elevation: number;
-  historicalRisk: number;
-  tilt: number;
+  groundMovement: number;
 }) {
   return apiPost<SimulationResponse>("/simulate", {
     zone_id: data.zoneId,
-    forecast_rainfall: data.rainfall,
-    current_soil_moisture: data.soilMoisture,
-    slope: data.slope,
-    elevation: data.elevation,
-    historical_risk: data.historicalRisk,
-    current_tilt: data.tilt,
+    rainfall_24h: data.rainfall24h,
+    soil_moisture: data.soilMoisture,
+    ground_movement: data.groundMovement,
   });
 }
 
 export async function postPredictionApi(data: {
   zoneId: string;
-  rainfall: number;
+  rainfall24h: number;
   soilMoisture: number;
-  slope: number;
-  elevation: number;
-  historicalRisk: number;
-  tilt: number;
+  groundMovement: number;
 }) {
   return apiPost<BackendPrediction>("/predict", {
     zone_id: data.zoneId,
-    rainfall: data.rainfall,
+    rainfall_24h: data.rainfall24h,
     soil_moisture: data.soilMoisture,
-    slope: data.slope,
-    elevation: data.elevation,
-    historical_risk: data.historicalRisk,
-    tilt: data.tilt,
+    ground_movement: data.groundMovement,
   });
 }

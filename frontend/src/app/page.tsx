@@ -13,8 +13,7 @@ import {
   postFieldReportApi,
   postSimulationApi,
   postPredictionApi,
-  createAlertApi,
-  createPriorityApi,
+  acknowledgeAlertApi,
   type BackendPrediction,
   type BackendSensorReading,
   type BackendPriority,
@@ -24,9 +23,15 @@ const RiskMap = dynamic(() => import("../components/Map"), {
   ssr: false,
 });
 
-type Zone = (typeof zonesData)[number] & {
+type Zone = Omit<
+  (typeof zonesData)[number],
+  "risk" | "confidence"
+> & {
   baseRisk: number;
+  risk: number | null;
+  confidence: number | null;
   priorityScore?: number;
+  predictionAvailable: boolean;
 };
 
 type FieldReport = {
@@ -38,104 +43,100 @@ type FieldReport = {
   time: string;
 };
 
+type DashboardAlert = {
+  id: string;
+  zoneId: string;
+  zoneName: string;
+  message: string;
+  severity: string;
+  time: string;
+  status: string;
+  acknowledged: boolean;
+};
+
 const initialZones: Zone[] = zonesData.map((zone) => ({
   ...zone,
   baseRisk: zone.risk,
+  risk: null,
+  confidence: null,
+  status: "NO PREDICTION",
+  reasons: [],
+  recommendedAction: "",
+  predictionAvailable: false,
 }));
 
-const riskFromScore = (score: number) => {
-  if (score >= 80) return "CRITICAL";
-  if (score >= 60) return "HIGH";
-  if (score >= 40) return "MEDIUM";
-  return "LOW";
-};
-
-// Standalone risk calculation from raw sensor values (used in mergeBackendZoneData)
-const calculateRawRisk = (
-  rainfall: number,
-  soilMoisture: number,
-  tilt: number
-): number => {
-  const rainfallScore = Math.min(100, (rainfall / 200) * 50);
-  const soilScore = Math.min(100, soilMoisture);
-  const tiltScore = Math.min(100, (tilt / 10) * 100);
-  const raw = rainfallScore * 0.4 + soilScore * 0.35 + tiltScore * 0.25;
-  return Math.max(0, Math.min(100, Math.round(raw)));
-};
-
-const calculateSimulatedRisk = (
-  zone: Zone,
-  rainfall: number,
-  soilMoisture: number,
-  tilt: number
-) => {
-  const rainfallEffect =
-    ((rainfall - zone.rainfall) / 200) * 25;
-
-  const soilEffect =
-    ((soilMoisture - zone.soilMoisture) / 100) * 20;
-
-  const tiltEffect =
-    ((tilt - zone.tilt) / 10) * 15;
-
-  const simulated =
-    zone.baseRisk +
-    rainfallEffect +
-    soilEffect +
-    tiltEffect;
-
-  return Math.max(0, Math.min(100, Math.round(simulated)));
-};
-
 const getStatusClass = (status: string) => {
-  if (status === "CRITICAL") {
-    return "bg-red-500/10 text-red-400";
-  }
-
-  if (status === "HIGH") {
-    return "bg-orange-500/10 text-orange-400";
-  }
-
-  if (status === "MEDIUM") {
-    return "bg-yellow-500/10 text-yellow-400";
-  }
-
-  return "bg-green-500/10 text-green-400";
+  if (status === "CRITICAL") return "bg-red-500/10 text-red-400";
+  if (status === "HIGH") return "bg-orange-500/10 text-orange-400";
+  if (status === "MODERATE") return "bg-yellow-500/10 text-yellow-400";
+  if (status === "LOW") return "bg-green-500/10 text-green-400";
+  return "bg-slate-500/10 text-slate-400";
 };
 
 const getRiskTextClass = (status: string) => {
   if (status === "CRITICAL") return "text-red-400";
   if (status === "HIGH") return "text-orange-400";
-  if (status === "MEDIUM") return "text-yellow-400";
-  return "text-green-400";
+  if (status === "MODERATE") return "text-yellow-400";
+  if (status === "LOW") return "text-green-400";
+  return "text-slate-400";
 };
 
 const getSeverityClass = (severity: string) => {
-  if (severity === "CRITICAL") return "text-red-400 bg-red-500/10";
-  if (severity === "HIGH") return "text-orange-400 bg-orange-500/10";
-  if (severity === "MEDIUM") return "text-yellow-400 bg-yellow-500/10";
-  return "text-green-400 bg-green-500/10";
+  if (severity === "CRITICAL") return "text-red-400 bg-red-500/10 border-red-500/20";
+  if (severity === "HIGH") return "text-orange-400 bg-orange-500/10 border-orange-500/20";
+  if (severity === "MODERATE") return "text-yellow-400 bg-yellow-500/10 border-yellow-500/20";
+  if (severity === "LOW") return "text-green-400 bg-green-500/10 border-green-500/20";
+  return "text-slate-400 bg-slate-500/10 border-slate-500/20";
 };
+
+const getBackendStatusLabel = (connected: boolean) =>
+  connected ? "CONNECTED" : "LAST KNOWN DATA";
+
+const hasPrediction = (zone: Zone) =>
+  zone.predictionAvailable === true && zone.risk !== null;
+
+const formatRiskProbability = (value: number) => {
+  const percent = value <= 1 ? value * 100 : value;
+  return `${percent.toFixed(1)}%`;
+};
+
+function BackendStatusBadges({ connected }: { connected: boolean }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-bold tracking-wider text-slate-300">
+        BACKEND DATA
+      </span>
+
+      <span
+        className={`rounded-full px-3 py-1 text-[10px] font-bold tracking-wider ${
+          connected
+            ? "bg-emerald-500/10 text-emerald-400"
+            : "bg-orange-500/10 text-orange-400"
+        }`}
+      >
+        {getBackendStatusLabel(connected)}
+      </span>
+    </div>
+  );
+}
 
 export default function Home() {
   const [zones, setZones] = useState<Zone[]>(initialZones);
 
-  const [selectedZoneId, setSelectedZoneId] = useState(
-    initialZones[0].id
-  );
+  const [selectedZoneId, setSelectedZoneId] = useState(initialZones[0].id);
 
   const selectedZone =
     zones.find((zone) => zone.id === selectedZoneId) ?? zones[0];
 
-  const [activeSection, setActiveSection] =
-    useState("dashboard");
+  const [activeSection, setActiveSection] = useState("dashboard");
 
-  const [alerts, setAlerts] = useState<any[]>([]);
+  const [alerts, setAlerts] = useState<DashboardAlert[]>([]);
   const [isBackendConnected, setIsBackendConnected] = useState(false);
+  const [backendError, setBackendError] = useState<string | null>(null);
 
-  const [sensorData, setSensorData] = useState<any[]>([]);
-  const [priorities, setPriorities] = useState<any[]>([]);
-  const [, setBackendReports] = useState<any[]>([]);
+  const [sensorData, setSensorData] = useState<BackendSensorReading[]>([]);
+  const [priorities, setPriorities] = useState<BackendPriority[]>([]);
+  const [, setBackendReports] = useState<unknown[]>([]);
 
   const [predictionsByZone, setPredictionsByZone] = useState<
     Record<string, BackendPrediction>
@@ -143,113 +144,50 @@ export default function Home() {
 
   const [backendRiskHistory, setBackendRiskHistory] = useState<
     {
+      zoneId: string;
       time: string;
       risk: number;
     }[]
   >([]);
 
-  const [simulationResult, setSimulationResult] = useState<any>(null);
+  const [simulationResult, setSimulationResult] = useState<{
+    simulated_risk_score: number;
+    simulated_risk_level: string;
+    simulated_priority_score: number;
+  } | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
 
-  const [backendPrediction, setBackendPrediction] = useState<any>(null);
+  const [backendPrediction, setBackendPrediction] =
+    useState<BackendPrediction | null>(null);
   const [predictionLoading, setPredictionLoading] = useState(false);
 
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
-  const [fieldReports, setFieldReports] = useState<FieldReport[]>([
-    {
-      id: 1,
-      zoneId: "ZONE-A",
-      zoneName: "Zone A — Khed",
-      observation:
-        "Visible ground cracks reported near residential area.",
-      severity: "CRITICAL",
-      time: "10 min ago",
-    },
-    {
-      id: 2,
-      zoneId: "ZONE-B",
-      zoneName: "Zone B — Maval",
-      observation:
-        "Increased water seepage observed on slope surface.",
-      severity: "HIGH",
-      time: "25 min ago",
-    },
-  ]);
+  const [fieldReports, setFieldReports] = useState<FieldReport[]>([]);
 
-  const [reportZone, setReportZone] = useState(
-    initialZones[0].id
-  );
+  const [reportZone, setReportZone] = useState(initialZones[0].id);
+  const [reportSeverity, setReportSeverity] = useState("MODERATE");
+  const [reportObservation, setReportObservation] = useState("");
+  const [showReportForm, setShowReportForm] = useState(false);
 
-  const [reportSeverity, setReportSeverity] =
-    useState("MEDIUM");
+  // Scenario Inputs — neutral defaults, not seeded from mock zone data
+  const [rainfall, setRainfall] = useState(100);
+  const [soilMoisture, setSoilMoisture] = useState(60);
+  const [groundTilt, setGroundTilt] = useState(2.0);
 
-  const [reportObservation, setReportObservation] =
-    useState("");
-
-  const [showReportForm, setShowReportForm] =
-    useState(false);
-
-  // Simulation values
-  const [rainfall, setRainfall] = useState(
-    initialZones[0].rainfall
-  );
-
-  const [soilMoisture, setSoilMoisture] = useState(
-    initialZones[0].soilMoisture
-  );
-
-  const [groundTilt, setGroundTilt] = useState(
-    initialZones[0].tilt
-  );
-
-  const [liveSensorMode, setLiveSensorMode] =
-    useState(false);
-
-  const [riskHistory, setRiskHistory] = useState<number[]>(
-    [74, 77, 79, 81, 83, 84, 85, 86]
-  );
-
-  // Update backend risk history for RiskTrendChart
-  const updateBackendRiskHistory = useCallback((readings: any[]) => {
-    if (!readings || readings.length === 0) return;
-
-    const history = readings
-      .slice(-10)
-      .map((reading) => ({
-        time: reading.timestamp
-          ? new Date(reading.timestamp).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })
-          : "Now",
-        risk: calculateRawRisk(
-          reading.rainfall,
-          reading.soil_moisture,
-          reading.tilt
-        ),
-      }));
-
-    setBackendRiskHistory(history);
-  }, []);
-
-  // Unified zone merge: always rebuilds from initialZones so old sensor
-  // values never become the new baseline.
   const mergeBackendZoneData = useCallback(
     (
       sensors: BackendSensorReading[],
       fetchedPriorities: BackendPriority[],
       predictions: Record<string, BackendPrediction>
-    ) =>
-      initialZones.map((zone) => {
-        // Pick the most recent sensor reading for this zone
+    ) => {
+      return initialZones.map((zone) => {
         const sensor = sensors
           .filter((item) => item.zone_id === zone.id)
           .sort(
             (a, b) =>
-              new Date(b.timestamp).getTime() -
-              new Date(a.timestamp).getTime()
+              new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
           )[0];
 
         const priority = fetchedPriorities.find(
@@ -258,57 +196,45 @@ export default function Home() {
 
         const prediction = predictions[zone.id];
 
-        let risk = zone.baseRisk;
-        let confidence = zone.confidence;
-        let status = zone.status;
-        let reasons = zone.reasons;
-
-        if (prediction) {
-          // ML prediction takes priority over sensor-derived risk
-          risk = prediction.risk_score;
-          confidence = prediction.confidence * 100;
-          status = prediction.risk_level;
-          reasons = prediction.drivers;
-        } else if (sensor) {
-          risk = calculateRawRisk(
-            sensor.rainfall,
-            sensor.soil_moisture,
-            sensor.tilt
-          );
-          status = riskFromScore(risk);
-          reasons = [
-            sensor.rainfall > 100
-              ? "Heavy rainfall"
-              : "Moderate rainfall",
-            sensor.soil_moisture > 70
-              ? "High soil moisture"
-              : "Moderate soil moisture",
-            sensor.tilt > 3
-              ? "Increasing ground tilt"
-              : "Stable ground movement",
-          ];
-        }
-
         return {
           ...zone,
-          risk: Math.round(risk),
-          confidence: Math.round(confidence),
-          status,
-          reasons,
+          risk: prediction != null ? Number(prediction.risk_score) : null,
+          status: prediction?.risk_level ?? "NO PREDICTION",
+          confidence:
+            prediction != null
+              ? Math.round(
+                  prediction.confidence <= 1
+                    ? prediction.confidence * 100
+                    : prediction.confidence
+                )
+              : null,
+          reasons: prediction
+            ? [
+                `Terrain susceptibility: ${prediction.terrain_probability}`,
+                `Rainfall factor: ${prediction.rainfall_factor}`,
+                `Soil moisture factor: ${prediction.soil_moisture_factor}`,
+                `Ground movement factor: ${prediction.ground_movement_factor}`,
+              ]
+            : [],
           rainfall: sensor?.rainfall ?? zone.rainfall,
           soilMoisture: sensor?.soil_moisture ?? zone.soilMoisture,
           tilt: sensor?.tilt ?? zone.tilt,
-          priorityScore: priority?.priority_score ?? 0,
+          priorityScore: priority?.priority_score ?? zone.priorityScore ?? 0,
           recommendedAction:
-            priority?.recommended_action ?? zone.recommendedAction,
+            prediction?.recommended_action ||
+            priority?.recommended_action ||
+            "",
+          predictionAvailable: prediction != null,
         };
-      }),
+      });
+    },
     []
   );
 
-  // Fetch backend data — always merges from initialZones (no stale baseline)
   const refreshBackendData = useCallback(async () => {
     try {
+      setBackendError(null);
+
       const [
         fetchedAlerts,
         fetchedSensors,
@@ -333,19 +259,21 @@ export default function Home() {
             severity: alert.severity,
             time: alert.timestamp
               ? new Date(alert.timestamp).toLocaleString()
-              : "Just now",
+              : "Unknown time",
+            status: alert.status || "ACTIVE",
             acknowledged: alert.status === "ACKNOWLEDGED",
           }))
         );
       }
 
       const sensors = Array.isArray(fetchedSensors) ? fetchedSensors : [];
-      const fetchedPris = Array.isArray(fetchedPriorities) ? fetchedPriorities : [];
+      const fetchedPris = Array.isArray(fetchedPriorities)
+        ? fetchedPriorities
+        : [];
 
       setSensorData(sensors);
       setPriorities(fetchedPris);
 
-      // Unified zone merge: sensor + priority + any cached predictions
       setPredictionsByZone((currentPredictions) => {
         const mergedZones = mergeBackendZoneData(
           sensors,
@@ -353,44 +281,36 @@ export default function Home() {
           currentPredictions
         );
         setZones(mergedZones);
-        return currentPredictions; // predictions unchanged by a refresh
+        return currentPredictions;
       });
-
-      updateBackendRiskHistory(sensors);
 
       if (fetchedReports && Array.isArray(fetchedReports)) {
         setBackendReports(fetchedReports);
-        const convertedReports: FieldReport[] = fetchedReports.map(
-          (report) => {
-            const zone = zonesData.find(
-              (item) => item.id === report.zone_id
-            );
-            return {
-              id: report.id,
-              zoneId: report.zone_id,
-              zoneName: zone?.name ?? report.zone_id,
-              observation: report.description ?? "Field Observation",
-              severity: report.type ?? "MEDIUM",
-              time: report.timestamp
-                ? new Date(report.timestamp).toLocaleString()
-                : "Recently",
-            };
-          }
-        );
-        if (convertedReports.length > 0) {
-          setFieldReports(convertedReports);
-        }
+        const convertedReports: FieldReport[] = fetchedReports.map((report) => {
+          const zone = zonesData.find((item) => item.id === report.zone_id);
+          return {
+            id: report.id,
+            zoneId: report.zone_id,
+            zoneName: zone?.name ?? report.zone_id,
+            observation: report.description ?? "Field observation",
+            severity: report.type ?? "MODERATE",
+            time: report.timestamp
+              ? new Date(report.timestamp).toLocaleString()
+              : "Recently",
+          };
+        });
+        setFieldReports(convertedReports);
       }
 
       setIsBackendConnected(true);
       setLastUpdated(new Date());
     } catch (error) {
-      console.error("Backend connection failed:", error);
+      console.error("Backend refresh failed:", error);
       setIsBackendConnected(false);
+      setBackendError("Backend unavailable. Showing last known data.");
     }
-  }, [mergeBackendZoneData, updateBackendRiskHistory]);
+  }, [mergeBackendZoneData]);
 
-  // Initial load and auto refresh timer
   useEffect(() => {
     refreshBackendData();
   }, [refreshBackendData]);
@@ -405,59 +325,56 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [autoRefresh, refreshBackendData]);
 
-  // Change simulation values when selected zone changes
   useEffect(() => {
-    setRainfall(selectedZone.rainfall);
-    setSoilMoisture(selectedZone.soilMoisture);
-    setGroundTilt(selectedZone.tilt);
+    // Reset scenario inputs to neutral defaults when zone changes.
+    // We do NOT seed them from zone mock data — sliders are user-defined,
+    // not live sensor readings.
+    setRainfall(100);
+    setSoilMoisture(60);
+    setGroundTilt(2.0);
+    setSimulationResult(null);
+  }, [selectedZone.id]);
 
-    setRiskHistory([
-      Math.max(0, selectedZone.risk - 12),
-      Math.max(0, selectedZone.risk - 9),
-      Math.max(0, selectedZone.risk - 7),
-      Math.max(0, selectedZone.risk - 5),
-      Math.max(0, selectedZone.risk - 3),
-      Math.max(0, selectedZone.risk - 2),
-      Math.max(0, selectedZone.risk - 1),
-      selectedZone.risk,
-    ]);
-  }, [selectedZone.id, selectedZone.rainfall, selectedZone.soilMoisture, selectedZone.tilt, selectedZone.risk]);
+  useEffect(() => {
+    setBackendPrediction(predictionsByZone[selectedZoneId] ?? null);
+  }, [selectedZoneId, predictionsByZone]);
 
-  const simulatedRisk = useMemo(
-    () =>
-      calculateSimulatedRisk(
-        selectedZone,
-        rainfall,
-        soilMoisture,
-        groundTilt
-      ),
-    [
-      selectedZone,
-      rainfall,
-      soilMoisture,
-      groundTilt,
-    ]
-  );
-
-  const simulatedStatus = riskFromScore(simulatedRisk);
-
-  // Dynamic dashboard statistics
   const criticalZones = zones.filter(
-    (zone) => zone.status === "CRITICAL"
+    (zone) => hasPrediction(zone) && zone.status === "CRITICAL"
   ).length;
 
   const highRiskZones = zones.filter(
-    (zone) => zone.status === "HIGH"
+    (zone) => hasPrediction(zone) && zone.status === "HIGH"
   ).length;
 
   const unacknowledgedAlertsCount = alerts.filter(
-    (alert) => !alert.acknowledged
+    (alert) => !alert.acknowledged && alert.status !== "ACKNOWLEDGED"
   ).length;
 
-  // Simulated: 6 sensors per monitored zone
-  const activeSensors = zones.length * 6;
+  const sensorReadingCount = sensorData.length;
 
-  // Active sidebar tracking
+  const selectedZoneRiskHistory = useMemo(
+    () =>
+      backendRiskHistory
+        .filter((item) => item.zoneId === selectedZone.id)
+        .map((item) => ({
+          time: item.time,
+          risk: item.risk,
+        })),
+    [backendRiskHistory, selectedZone.id]
+  );
+
+  const selectedZoneSensor = useMemo(() => {
+    return sensorData
+      .filter((item: any) => item.zone_id === selectedZone.id)
+      .sort(
+        (a: any, b: any) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      )[0];
+  }, [sensorData, selectedZone.id]);
+
+  const hasSensorReading = Boolean(selectedZoneSensor);
+
   useEffect(() => {
     const sectionIds = [
       "dashboard",
@@ -473,16 +390,10 @@ export default function Home() {
       (entries) => {
         const visibleEntries = entries
           .filter((entry) => entry.isIntersecting)
-          .sort(
-            (a, b) =>
-              b.intersectionRatio -
-              a.intersectionRatio
-          );
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
 
         if (visibleEntries.length > 0) {
-          setActiveSection(
-            visibleEntries[0].target.id
-          );
+          setActiveSection(visibleEntries[0].target.id);
         }
       },
       {
@@ -493,98 +404,13 @@ export default function Home() {
 
     sectionIds.forEach((id) => {
       const element = document.getElementById(id);
-
-      if (element) {
-        observer.observe(element);
-      }
+      if (element) observer.observe(element);
     });
 
     return () => observer.disconnect();
   }, []);
 
-  // Live sensor simulation
-  useEffect(() => {
-    if (!liveSensorMode) return;
-
-    const interval = setInterval(() => {
-      setZones((currentZones) =>
-        currentZones.map((zone) => {
-          if (zone.id !== selectedZoneId) {
-            return zone;
-          }
-
-          const rainfallChange =
-            Math.random() * 10 - 3;
-
-          const soilChange =
-            Math.random() * 6 - 1;
-
-          const tiltChange =
-            Math.random() * 0.6 - 0.1;
-
-          const newRainfall = Math.max(
-            0,
-            Math.min(
-              200,
-              Math.round(
-                zone.rainfall + rainfallChange
-              )
-            )
-          );
-
-          const newSoilMoisture = Math.max(
-            0,
-            Math.min(
-              100,
-              Math.round(
-                zone.soilMoisture + soilChange
-              )
-            )
-          );
-
-          const newTilt = Math.max(
-            0,
-            Math.min(
-              10,
-              Number(
-                (
-                  zone.tilt + tiltChange
-                ).toFixed(1)
-              )
-            )
-          );
-
-          const newRisk =
-            calculateSimulatedRisk(
-              zone,
-              newRainfall,
-              newSoilMoisture,
-              newTilt
-            );
-
-          setRiskHistory((history) => [
-            ...history.slice(-7),
-            newRisk,
-          ]);
-
-          setLastUpdated(new Date());
-
-          return {
-            ...zone,
-            rainfall: newRainfall,
-            soilMoisture: newSoilMoisture,
-            tilt: newTilt,
-            risk: newRisk,
-            status: riskFromScore(newRisk),
-          };
-        })
-      );
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [liveSensorMode, selectedZoneId]);
-
-  const updateSelectedZone = (
+  const updateScenarioInputs = (
     newRainfall: number,
     newSoilMoisture: number,
     newTilt: number
@@ -592,90 +418,6 @@ export default function Home() {
     setRainfall(newRainfall);
     setSoilMoisture(newSoilMoisture);
     setGroundTilt(newTilt);
-
-    setLastUpdated(new Date());
-
-    const newRisk = calculateSimulatedRisk(
-      selectedZone,
-      newRainfall,
-      newSoilMoisture,
-      newTilt
-    );
-
-    setRiskHistory((history) => [
-      ...history.slice(-7),
-      newRisk,
-    ]);
-  };
-
-  const generateBackendAlert = async (
-    zoneId: string,
-    riskScore: number,
-    riskLevel: string,
-    drivers: string[]
-  ) => {
-    if (riskScore < 80) {
-      return;
-    }
-
-    try {
-      const message =
-        `AI detected CRITICAL landslide risk in ${zoneId}. ` +
-        `Risk score: ${riskScore.toFixed(1)}%. ` +
-        `Drivers: ${drivers.join(", ")}.`;
-
-      await createAlertApi({
-        zoneId,
-        severity: "CRITICAL",
-        message,
-      });
-
-      await refreshBackendData();
-    } catch (error) {
-      console.error("Failed to create alert:", error);
-    }
-  };
-
-  const generateBackendPriority = async (
-    zoneId: string,
-    riskScore: number
-  ) => {
-    const zone = zones.find((item) => item.id === zoneId);
-
-    if (!zone) return;
-
-    try {
-      const exposure = Math.min(
-        100,
-        (zone.population / 15000) * 100
-      );
-
-      const urgency =
-        riskScore >= 80
-          ? 95
-          : riskScore >= 65
-            ? 80
-            : riskScore >= 50
-              ? 60
-              : 30;
-
-      const result = await createPriorityApi({
-        zoneId,
-        risk: riskScore,
-        exposure,
-        urgency,
-      });
-
-      setPriorities((current) => {
-        const existing = current.filter(
-          (item) => item.zone_id !== zoneId
-        );
-
-        return [...existing, result];
-      });
-    } catch (error) {
-      console.error("Priority calculation failed:", error);
-    }
   };
 
   const runBackendPrediction = async () => {
@@ -686,51 +428,54 @@ export default function Home() {
 
       const prediction = await postPredictionApi({
         zoneId: selectedZone.id,
-        rainfall,
-        soilMoisture,
-        slope: 30,
-        elevation: 500,
-        historicalRisk: selectedZone.baseRisk,
-        tilt: groundTilt,
+        rainfall24h: rainfall,
+        soilMoisture: soilMoisture,
+        groundMovement: groundTilt,
       });
 
-      // Store prediction so mergeBackendZoneData can use it on next refresh
       const updatedPredictions = {
         ...predictionsByZone,
         [prediction.zone_id]: prediction,
       };
       setPredictionsByZone(updatedPredictions);
-
       setBackendPrediction(prediction);
 
-      // Immediately apply prediction to zone state
+      setBackendRiskHistory((current) => {
+        const newPoint = {
+          zoneId: prediction.zone_id,
+          time: new Date().toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          risk: Number(prediction.risk_score),
+        };
+
+        return [...current, newPoint].slice(-10);
+      });
+
       setZones((currentZones) =>
         currentZones.map((zone) =>
           zone.id === prediction.zone_id
             ? {
                 ...zone,
-                risk: Math.round(prediction.risk_score),
-                confidence: Math.round(prediction.confidence * 100),
+                risk: Number(prediction.risk_score),
+                confidence: Math.round(
+                  prediction.confidence <= 1
+                    ? prediction.confidence * 100
+                    : prediction.confidence
+                ),
                 status: prediction.risk_level,
-                reasons:
-                  prediction.drivers && prediction.drivers.length > 0
-                    ? prediction.drivers
-                    : zone.reasons,
+                predictionAvailable: true,
+                recommendedAction: prediction.recommended_action,
+                reasons: [
+                  `Terrain susceptibility: ${prediction.terrain_probability}`,
+                  `Rainfall factor: ${prediction.rainfall_factor}`,
+                  `Soil moisture factor: ${prediction.soil_moisture_factor}`,
+                  `Ground movement factor: ${prediction.ground_movement_factor}`,
+                ],
               }
             : zone
         )
-      );
-
-      await generateBackendAlert(
-        prediction.zone_id,
-        prediction.risk_score,
-        prediction.risk_level,
-        prediction.drivers || []
-      );
-
-      await generateBackendPriority(
-        prediction.zone_id,
-        prediction.risk_score
       );
     } catch (error) {
       console.error("Backend prediction failed:", error);
@@ -745,23 +490,7 @@ export default function Home() {
       return;
     }
 
-    const zone =
-      zones.find((item) => item.id === reportZone) ??
-      zones[0];
-
-    const severityIncrease: Record<string, number> = {
-      LOW: 3,
-      MEDIUM: 6,
-      HIGH: 10,
-      CRITICAL: 15,
-    };
-
-    const newRisk = Math.min(
-      100,
-      zone.risk + severityIncrease[reportSeverity]
-    );
-
-    const newStatus = riskFromScore(newRisk);
+    const zone = zones.find((item) => item.id === reportZone) ?? zones[0];
 
     const newReport: FieldReport = {
       id: Date.now(),
@@ -769,25 +498,10 @@ export default function Home() {
       zoneName: zone.name,
       observation: reportObservation,
       severity: reportSeverity,
-      time: "Just now",
+      time: new Date().toLocaleString(),
     };
 
-    setFieldReports((reports) => [
-      newReport,
-      ...reports,
-    ]);
-
-    setZones((currentZones) =>
-      currentZones.map((item) =>
-        item.id === zone.id
-          ? {
-              ...item,
-              risk: newRisk,
-              status: newStatus,
-            }
-          : item
-      )
-    );
+    setFieldReports((reports) => [newReport, ...reports]);
 
     try {
       await postFieldReportApi({
@@ -802,30 +516,10 @@ export default function Home() {
       console.error("Field report API failed:", error);
     }
 
-    if (
-      reportSeverity === "HIGH" ||
-      reportSeverity === "CRITICAL"
-    ) {
-      setAlerts((current) => [
-        {
-          id: `ALT-${Date.now()}`,
-          zoneId: zone.id,
-          zoneName: zone.name,
-          severity: reportSeverity,
-          message: `Field Report: ${reportObservation.substring(0, 30)}...`,
-          time: "Just now",
-          acknowledged: false,
-        },
-        ...current,
-      ]);
-    }
-
     setSelectedZoneId(zone.id);
-
     setReportObservation("");
-    setReportSeverity("MEDIUM");
+    setReportSeverity("MODERATE");
     setShowReportForm(false);
-    setLastUpdated(new Date());
   };
 
   const runBackendSimulation = async () => {
@@ -836,16 +530,12 @@ export default function Home() {
     try {
       const result = await postSimulationApi({
         zoneId: selectedZone.id,
-        rainfall: rainfall,
+        rainfall24h: rainfall,
         soilMoisture: soilMoisture,
-        slope: 30,
-        elevation: 500,
-        historicalRisk: selectedZone.baseRisk,
-        tilt: groundTilt,
+        groundMovement: groundTilt,
       });
 
       setSimulationResult(result);
-      setLastUpdated(new Date());
     } catch (error) {
       console.error("Simulation failed:", error);
     } finally {
@@ -853,19 +543,24 @@ export default function Home() {
     }
   };
 
-  const handleAcknowledgeAlert = (alertId: string) => {
+  const handleAcknowledgeAlert = async (alertId: string) => {
     setAlerts((currentAlerts) =>
       currentAlerts.map((item) =>
         item.id === alertId
           ? {
               ...item,
               acknowledged: true,
+              status: "ACKNOWLEDGED",
             }
           : item
       )
     );
 
-    setLastUpdated(new Date());
+    try {
+      await acknowledgeAlertApi(alertId);
+    } catch (error) {
+      console.warn("Backend alert acknowledgement failed or unsupported:", error);
+    }
   };
 
   const selectZone = (zoneId: string) => {
@@ -873,60 +568,79 @@ export default function Home() {
   };
 
   const scrollToSection = (id: string) => {
-    document
-      .getElementById(id)
-      ?.scrollIntoView({
-        behavior: "smooth",
-      });
+    document.getElementById(id)?.scrollIntoView({
+      behavior: "smooth",
+    });
   };
+
+  const navItems = [
+    ["Dashboard", "dashboard"],
+    ["Map", "risk-map"],
+    ["Zone Details", "zone-details"],
+    ["Alerts", "alerts"],
+    ["Priorities", "priorities"],
+    ["Field Reports", "field-reports"],
+    ["Simulation", "simulation"],
+  ] as const;
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
-      {/* HEADER */}
-      <header className="sticky top-0 z-40 border-b border-slate-800 bg-slate-900 px-6 py-4">
-        <div className="flex items-center justify-between">
+      <header className="sticky top-0 z-40 border-b border-slate-800 bg-slate-900/95 px-4 py-4 backdrop-blur md:px-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
+            <p className="text-[10px] font-bold tracking-[0.25em] text-cyan-400">
+              PREDICT → ASSESS → ACT
+            </p>
             <h1 className="text-2xl font-bold tracking-wide">
               SLOPEGUARD
-              <span className="text-cyan-400">
-                –NER
-              </span>
+              <span className="text-cyan-400">–NER</span>
             </h1>
-
             <p className="text-sm text-slate-400">
-              Landslide Early Warning & Response
-              Intelligence
+              ML-based landslide risk assessment command center
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className={`h-2 w-2 rounded-full ${isBackendConnected ? "bg-green-400 animate-pulse" : "bg-cyan-400"}`}></div>
+          <div className="flex flex-wrap items-center gap-3">
+            <BackendStatusBadges connected={isBackendConnected} />
 
-            <span className={`text-sm ${isBackendConnected ? "text-green-400" : "text-cyan-400"}`}>
-              {isBackendConnected ? "FASTAPI API CONNECTED" : "SYSTEM ONLINE"}
-            </span>
+            <div className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                Last successful update
+              </p>
+              <p
+                suppressHydrationWarning
+                className="text-sm font-semibold text-slate-200"
+              >
+                {lastUpdated ? lastUpdated.toLocaleTimeString() : "None yet"}
+              </p>
+            </div>
           </div>
         </div>
       </header>
 
-      <div className="flex">
-        {/* SIDEBAR */}
-        <aside className="hidden min-h-[calc(100vh-81px)] w-60 border-r border-slate-800 bg-slate-900 p-4 md:block">
+      <div className="flex flex-col md:flex-row">
+        <nav className="flex gap-2 overflow-x-auto border-b border-slate-800 bg-slate-900 px-4 py-3 md:hidden">
+          {navItems.map(([label, id]) => (
+            <button
+              key={id}
+              onClick={() => scrollToSection(id)}
+              className={`whitespace-nowrap rounded-lg px-3 py-2 text-xs ${
+                activeSection === id
+                  ? "bg-cyan-500/10 text-cyan-400"
+                  : "text-slate-400"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        <aside className="hidden min-h-[calc(100vh-81px)] w-60 shrink-0 border-r border-slate-800 bg-slate-900 p-4 md:block">
           <nav className="sticky top-24 space-y-2">
-            {[
-              ["Dashboard", "dashboard"],
-              ["Map", "risk-map"],
-              ["Zone Details", "zone-details"],
-              ["Alerts", "alerts"],
-              ["Priorities", "priorities"],
-              ["Field Reports", "field-reports"],
-              ["Simulation", "simulation"],
-            ].map(([label, id]) => (
+            {navItems.map(([label, id]) => (
               <button
                 key={id}
-                onClick={() =>
-                  scrollToSection(id)
-                }
+                onClick={() => scrollToSection(id)}
                 className={`w-full rounded-lg px-4 py-3 text-left text-sm transition ${
                   activeSection === id
                     ? "bg-cyan-500/10 text-cyan-400"
@@ -937,69 +651,31 @@ export default function Home() {
               </button>
             ))}
 
-            {/* SYSTEM STATUS */}
             <div className="mt-8 rounded-lg border border-slate-800 bg-slate-950 p-4">
-              <p className="text-xs text-slate-500">
-                SYSTEM STATUS
-              </p>
-
-              <div className="mt-3 flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-green-400"></span>
-
-                <span className="text-xs text-green-400">
-                  {isBackendConnected ? "FastAPI Connected" : "All systems operational"}
-                </span>
+              <p className="text-xs text-slate-500">BACKEND STATUS</p>
+              <div className="mt-3">
+                <BackendStatusBadges connected={isBackendConnected} />
               </div>
             </div>
           </nav>
         </aside>
 
-        {/* MAIN */}
-        <section
-          id="dashboard"
-          className="flex-1 p-6"
-        >
-          {/* DASHBOARD HEADING */}
+        <section id="dashboard" className="flex-1 p-4 md:p-6">
           <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h2 className="text-xl font-semibold">
-                Command Center
-              </h2>
-
+              <h2 className="text-xl font-semibold">Command Center</h2>
               <p className="text-sm text-slate-400">
-                Real-time overview of landslide risk
+                Operational overview of monitored zones, backend predictions,
                 and response priorities
               </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-900 px-4 py-3 text-sm">
-                <span
-                  className={`h-2.5 w-2.5 rounded-full ${
-                    isBackendConnected
-                      ? "bg-green-400 animate-pulse"
-                      : "bg-red-500"
-                  }`}
-                />
-                <span className="font-medium text-slate-200">
-                  {isBackendConnected
-                    ? "Backend Connected"
-                    : "Backend Offline"}
-                </span>
-              </div>
-
-              <div className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-3">
-                <p className="text-xs text-slate-500">Last Updated</p>
-                <p suppressHydrationWarning className="mt-1 text-sm font-semibold text-green-400">
-                  {lastUpdated ? lastUpdated.toLocaleTimeString() : "Just now"}
-                </p>
-              </div>
-
               <button
                 onClick={refreshBackendData}
                 className="rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
               >
-                ↻ Refresh
+                Refresh
               </button>
 
               <button
@@ -1010,158 +686,173 @@ export default function Home() {
                     : "border-slate-700 bg-slate-900 text-slate-400"
                 }`}
               >
-                {autoRefresh ? "⏸ Auto Refresh ON" : "▶ Auto Refresh OFF"}
+                {autoRefresh ? "Auto Refresh ON" : "Auto Refresh OFF"}
               </button>
             </div>
           </div>
 
-          {/* SUMMARY CARDS */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-xl border border-slate-800 bg-slate-900 p-5">
-              <p className="text-sm text-slate-400">
-                Critical Zones
-              </p>
+          {backendError && (
+            <div className="mb-4 rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-orange-300">
+                    Backend connection unavailable
+                  </p>
+                  <p className="text-xs text-orange-200/70">
+                    Showing last known backend data. No local sensor simulation
+                    is running.
+                  </p>
+                </div>
 
-              <p className="mt-2 text-3xl font-bold text-red-400">
-                {String(criticalZones).padStart(
-                  2,
-                  "0"
-                )}
-              </p>
+                <span className="w-fit rounded-full border border-orange-400/30 px-3 py-1 text-[10px] font-bold tracking-wider text-orange-300">
+                  LAST KNOWN DATA
+                </span>
+              </div>
+            </div>
+          )}
 
-              <p className="mt-1 text-xs text-slate-500">
-                Immediate attention
+          <div className="mb-6 grid gap-3 rounded-xl border border-slate-800 bg-slate-900 p-4 md:grid-cols-3">
+            <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-4">
+              <p className="text-[10px] font-bold tracking-[0.2em] text-cyan-400">
+                PREDICT
+              </p>
+              <p className="mt-2 text-sm font-semibold text-white">ML Model</p>
+              <p className="mt-1 text-xs leading-5 text-slate-400">
+                Rainfall, terrain, soil moisture, and ground movement are sent
+                to the backend ML engine.
               </p>
             </div>
-
-            <div className="rounded-xl border border-slate-800 bg-slate-900 p-5">
-              <p className="text-sm text-slate-400">
-                High-Risk Zones
+            <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4">
+              <p className="text-[10px] font-bold tracking-[0.2em] text-amber-300">
+                ASSESS
               </p>
-
-              <p className="mt-2 text-3xl font-bold text-orange-400">
-                {String(highRiskZones).padStart(
-                  2,
-                  "0"
-                )}
+              <p className="mt-2 text-sm font-semibold text-white">
+                Risk Assessment
               </p>
-
-              <p className="mt-1 text-xs text-slate-500">
-                Monitor closely
+              <p className="mt-1 text-xs leading-5 text-slate-400">
+                Risk score, data confidence, exposure, and priority are shown
+                only from backend outputs.
               </p>
             </div>
-
-            <div className="rounded-xl border border-slate-800 bg-slate-900 p-5">
-              <p className="text-sm text-slate-400">
-                Active Alerts
+            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-4">
+              <p className="text-[10px] font-bold tracking-[0.2em] text-emerald-400">
+                ACT
               </p>
-
-              <p className="mt-2 text-3xl font-bold text-yellow-400">
-                {String(unacknowledgedAlertsCount).padStart(
-                  2,
-                  "0"
-                )}
+              <p className="mt-2 text-sm font-semibold text-white">
+                Command Center
               </p>
-
-              <p className="mt-1 text-xs text-slate-500">
-                Requiring response
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-slate-800 bg-slate-900 p-5">
-              <p className="text-sm text-slate-400">
-                Active Sensors
-              </p>
-
-              <p className="mt-2 text-3xl font-bold text-cyan-400">
-                {activeSensors}
-              </p>
-
-              <p className="mt-1 text-xs text-slate-500">
-                Reporting normally
+              <p className="mt-1 text-xs leading-5 text-slate-400">
+                Alerts, recommended action, field observations, and response
+                prioritization.
               </p>
             </div>
           </div>
 
-          {/* MAP + ALERTS */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-xl border border-slate-800 bg-slate-900 p-5">
+              <p className="text-xs uppercase tracking-wider text-slate-500">
+                Critical Zones
+              </p>
+              <p className="mt-2 text-3xl font-bold text-red-400">
+                {String(criticalZones).padStart(2, "0")}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                From backend ML predictions
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-slate-800 bg-slate-900 p-5">
+              <p className="text-xs uppercase tracking-wider text-slate-500">
+                High-Risk Zones
+              </p>
+              <p className="mt-2 text-3xl font-bold text-orange-400">
+                {String(highRiskZones).padStart(2, "0")}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">Monitor closely</p>
+            </div>
+
+            <div className="rounded-xl border border-slate-800 bg-slate-900 p-5">
+              <p className="text-xs uppercase tracking-wider text-slate-500">
+                Active Alerts
+              </p>
+              <p className="mt-2 text-3xl font-bold text-yellow-400">
+                {String(unacknowledgedAlertsCount).padStart(2, "0")}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                From backend alert service
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-slate-800 bg-slate-900 p-5">
+              <p className="text-xs uppercase tracking-wider text-slate-500">
+                Sensor Readings
+              </p>
+              <p className="mt-1 text-3xl font-bold text-white">
+                {sensorReadingCount}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Backend readings received
+              </p>
+            </div>
+          </div>
+
           <div className="mt-6 grid gap-6 lg:grid-cols-3">
-            {/* MAP */}
             <div
               id="risk-map"
               className="rounded-xl border border-slate-800 bg-slate-900 p-5 lg:col-span-2"
             >
-              <div className="mb-4 flex items-center justify-between">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h3 className="font-semibold">
-                    GIS Risk Map
-                  </h3>
-
+                  <h3 className="font-semibold">GIS Risk Map</h3>
                   <p className="text-xs text-slate-500">
-                    Current risk distribution
+                    Zone positions from GIS coordinates. Risk colors come from
+                    backend prediction levels.
                   </p>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  {liveSensorMode && (
-                    <span className="rounded-md bg-green-500/10 px-3 py-1 text-xs text-green-400">
-                      SENSOR STREAM
-                    </span>
-                  )}
-
-                  <span className="rounded-md bg-cyan-500/10 px-3 py-1 text-xs text-cyan-400">
-                    LIVE
-                  </span>
-                </div>
+                <BackendStatusBadges connected={isBackendConnected} />
               </div>
 
-              <div className="relative h-80 overflow-hidden rounded-lg border border-slate-700">
+              <div className="relative h-80 overflow-hidden rounded-lg border border-slate-700 md:h-[28rem]">
                 <RiskMap zones={zones} />
 
-                {/* MAP LEGEND */}
                 <div className="absolute bottom-3 left-3 z-[1000] rounded-lg border border-slate-700 bg-slate-950/95 p-3 shadow-lg">
                   <p className="mb-2 text-xs font-semibold text-white">
                     Risk Level
                   </p>
-
                   <div className="space-y-1.5 text-xs">
                     <div className="flex items-center gap-2">
                       <span className="h-3 w-3 rounded-full bg-red-500"></span>
-                      Critical
+                      CRITICAL
                     </div>
-
                     <div className="flex items-center gap-2">
                       <span className="h-3 w-3 rounded-full bg-orange-500"></span>
-                      High
+                      HIGH
                     </div>
-
                     <div className="flex items-center gap-2">
                       <span className="h-3 w-3 rounded-full bg-yellow-400"></span>
-                      Medium
+                      MODERATE
                     </div>
-
                     <div className="flex items-center gap-2">
                       <span className="h-3 w-3 rounded-full bg-green-500"></span>
-                      Low
+                      LOW
                     </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* ALERTS */}
             <div
               id="alerts"
               className="rounded-xl border border-slate-800 bg-slate-900 p-5"
             >
               <div className="mb-4 flex items-center justify-between">
                 <div>
-                  <h3 className="font-semibold">Active Alerts</h3>
-
+                  <h3 className="font-semibold">Alerts</h3>
                   <p className="text-xs text-slate-500">
-                    Live system alerts requiring attention
+                    Backend alert service only. This dashboard does not create
+                    alerts from field reports or local risk math.
                   </p>
                 </div>
-
                 <span className="rounded-md bg-red-500/10 px-3 py-1 text-xs text-red-400">
                   {unacknowledgedAlertsCount} active
                 </span>
@@ -1170,7 +861,7 @@ export default function Home() {
               <div className="space-y-3">
                 {alerts.length === 0 ? (
                   <div className="rounded-lg border border-slate-800 bg-slate-950 p-4 text-sm text-slate-400">
-                    No active alerts from backend.
+                    No alerts received from backend.
                   </div>
                 ) : (
                   alerts.map((alert) => (
@@ -1178,36 +869,28 @@ export default function Home() {
                       key={alert.id}
                       className={`rounded-lg border p-4 ${
                         alert.acknowledged
-                          ? "border-slate-800 bg-slate-950 opacity-60"
-                          : "border-red-500/20 bg-red-500/5"
+                          ? "border-slate-800 bg-slate-950 opacity-70"
+                          : getSeverityClass(alert.severity)
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium">
-                              {alert.zoneName}
-                            </p>
-
-                            <span
-                              className={`text-xs font-semibold ${
-                                alert.severity === "CRITICAL"
-                                  ? "text-red-400"
-                                  : alert.severity === "HIGH"
-                                    ? "text-orange-400"
-                                    : "text-yellow-400"
-                              }`}
-                            >
-                              {alert.severity}
-                            </span>
-                          </div>
-
-                          <p className="mt-1 text-xs text-slate-400">
+                          <span
+                            className={`rounded-md px-2 py-0.5 text-[10px] font-bold tracking-wider ${getStatusClass(
+                              alert.severity
+                            )}`}
+                          >
+                            {alert.severity}
+                          </span>
+                          <p className="mt-2 font-medium">{alert.zoneName}</p>
+                          <p className="mt-1 text-xs text-slate-300">
                             {alert.message}
                           </p>
-
-                          <p className="mt-2 text-xs text-slate-600">
+                          <p className="mt-2 text-xs text-slate-500">
                             {alert.time}
+                          </p>
+                          <p className="mt-2 text-[10px] font-bold tracking-wider text-slate-400">
+                            STATUS: {alert.status}
                           </p>
                         </div>
 
@@ -1233,245 +916,251 @@ export default function Home() {
             </div>
           </div>
 
-          {/* AI EXPLANATION */}
           <div
             id="zone-details"
             className="mt-6 rounded-xl border border-cyan-500/30 bg-slate-900 p-5"
           >
-            <div className="mb-5 flex items-center justify-between">
+            <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-lg font-semibold">
-                  AI Risk Explanation
-                </h3>
-
+                <h3 className="text-lg font-semibold">Selected Zone</h3>
                 <p className="text-xs text-slate-500">
-                  Why the AI assigned this risk
-                  score
+                  Backend ML prediction for {selectedZone.name}
                 </p>
               </div>
-
-              <span className="rounded-md bg-cyan-500/10 px-3 py-1 text-xs text-cyan-400">
-                EXPLAINABLE AI
-              </span>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
-                <p className="text-xs text-slate-500">
-                  Selected Zone
-                </p>
-
-                <p className="mt-2 font-semibold">
-                  {selectedZone.name}
-                </p>
-              </div>
-
-              <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
-                <p className="text-xs text-slate-500">
-                  Risk Score
-                </p>
-
-                <p className="mt-2 text-2xl font-bold text-cyan-400">
-                  {selectedZone.risk}%
-                </p>
-              </div>
-
-              <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
-                <p className="text-xs text-slate-500">
-                  AI Confidence
-                </p>
-
-                <p className="mt-2 text-3xl font-bold">
-                  {selectedZone.confidence}%
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950 p-4">
-              <p className="mb-3 text-sm font-semibold">
-                Main Contributing Factors
-              </p>
-
-              <div className="grid gap-3 md:grid-cols-3">
-                {selectedZone.reasons.map(
-                  (reason) => (
-                    <div
-                      key={reason}
-                      className="flex items-center gap-3 rounded-lg bg-slate-900 p-3"
-                    >
-                      <span className="h-2 w-2 rounded-full bg-red-400"></span>
-
-                      <span className="text-sm">
-                        {reason}
-                      </span>
-                    </div>
-                  )
-                )}
-              </div>
-            </div>
-
-            <p className="mt-4 text-sm leading-6 text-slate-400">
-              The AI combines environmental and
-              ground-movement indicators to estimate
-              landslide probability. Higher rainfall,
-              soil saturation and ground movement
-              increase the overall risk score.
-            </p>
-          </div>
-
-          {/* SELECTED ZONE DETAILS */}
-          <div className="mt-6 rounded-xl border border-cyan-500/30 bg-slate-900 p-5">
-            <div className="mb-5 flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold">
-                  Zone Details
-                </h3>
-
-                <p className="text-xs text-slate-500">
-                  Selected zone:{" "}
-                  {selectedZone.name}
-                </p>
-              </div>
-
               <span
-                className={`rounded-md px-3 py-1 text-xs font-semibold ${getStatusClass(
-                  selectedZone.status
+                className={`w-fit rounded-md px-3 py-1 text-xs font-semibold ${getStatusClass(
+                  hasPrediction(selectedZone)
+                    ? selectedZone.status
+                    : "NO PREDICTION"
                 )}`}
               >
-                {selectedZone.status}
+                {hasPrediction(selectedZone)
+                  ? selectedZone.status
+                  : "NO PREDICTION"}
               </span>
             </div>
 
             <div className="grid gap-4 md:grid-cols-3">
               <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
-                <p className="text-xs text-slate-500">
-                  AI Risk Score
+                <p className="text-xs uppercase tracking-wider text-slate-500">
+                  Risk Score
                 </p>
-
-                <p className="mt-2 text-3xl font-bold text-cyan-400">
-                  {selectedZone.risk}%
-                </p>
-              </div>
-
-              <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
-                <p className="text-xs text-slate-500">
-                  AI Confidence
-                </p>
-
-                <p className="mt-2 text-3xl font-bold">
-                  {selectedZone.confidence}%
+                <p className="mt-2 text-2xl font-bold text-white">
+                  {hasPrediction(selectedZone)
+                    ? `${selectedZone.risk}%`
+                    : "N/A"}
                 </p>
               </div>
 
               <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
-                <p className="text-xs text-slate-500">
-                  Population at Risk
+                <p className="text-xs uppercase tracking-wider text-slate-500">
+                  Risk Level
                 </p>
+                <p
+                  className={`mt-1 text-lg font-bold ${getRiskTextClass(
+                    selectedZone.status
+                  )}`}
+                >
+                  {hasPrediction(selectedZone)
+                    ? selectedZone.status
+                    : "NO PREDICTION"}
+                </p>
+              </div>
 
-                <p className="mt-2 text-3xl font-bold">
-                  {selectedZone.population.toLocaleString()}
+              <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
+                <p className="text-xs uppercase tracking-wider text-slate-500">
+                  Data Confidence
+                </p>
+                <p className="mt-1 text-2xl font-bold text-white">
+                  {selectedZone.confidence !== null
+                    ? `${selectedZone.confidence}%`
+                    : "N/A"}
                 </p>
               </div>
             </div>
+
+            {!hasPrediction(selectedZone) && (
+              <div className="mt-4 rounded-xl border border-dashed border-white/10 bg-white/[0.02] p-6 text-center">
+                <p className="text-sm font-semibold text-slate-300">
+                  No backend prediction available
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Run an ML prediction for this zone to view risk assessment,
+                  confidence, contributing factors and recommended action.
+                </p>
+              </div>
+            )}
+
+            {hasPrediction(selectedZone) && (
+              <>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <div className="rounded-lg bg-white/5 p-3">
+                    <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                      Terrain Susceptibility
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      {backendPrediction
+                        ? backendPrediction.terrain_probability.toFixed(3)
+                        : "N/A"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-white/5 p-3">
+                    <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                      Rainfall Factor
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      {backendPrediction
+                        ? backendPrediction.rainfall_factor.toFixed(3)
+                        : "N/A"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-white/5 p-3">
+                    <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                      Soil Moisture Factor
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      {backendPrediction
+                        ? backendPrediction.soil_moisture_factor.toFixed(3)
+                        : "N/A"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-white/5 p-3">
+                    <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                      Ground Movement Factor
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      {backendPrediction
+                        ? backendPrediction.ground_movement_factor.toFixed(3)
+                        : "N/A"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                    <p className="text-xs uppercase tracking-wider text-slate-500">
+                      Risk Probability
+                    </p>
+                    <p className="mt-1 text-2xl font-bold text-white">
+                      {backendPrediction
+                        ? formatRiskProbability(
+                            backendPrediction.risk_probability
+                          )
+                        : "N/A"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                    <p className="text-xs uppercase tracking-wider text-slate-500">
+                      Recommended Action
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-slate-200">
+                      {backendPrediction?.recommended_action ||
+                        "No backend recommendation available."}
+                    </p>
+                  </div>
+                </div>
+              </>
+            )}
 
             <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-lg bg-slate-950 p-4">
-                <p className="text-xs text-slate-500">
-                  Rainfall
-                </p>
-
-                <p className="mt-1 text-lg font-semibold">
-                  {selectedZone.rainfall} mm
-                </p>
+                <p className="text-xs text-slate-500">Rainfall</p>
+                {hasSensorReading ? (
+                  <>
+                    <p className="mt-1 text-lg font-semibold">
+                      {selectedZoneSensor.rainfall} mm
+                    </p>
+                    <p className="mt-1 text-[10px] text-slate-600">
+                      Last known backend reading
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-1 text-lg font-semibold text-slate-400">
+                      N/A
+                    </p>
+                    <p className="mt-1 text-[10px] text-slate-600">
+                      No backend reading available
+                    </p>
+                  </>
+                )}
               </div>
-
               <div className="rounded-lg bg-slate-950 p-4">
-                <p className="text-xs text-slate-500">
-                  Soil Moisture
-                </p>
-
-                <p className="mt-1 text-lg font-semibold">
-                  {selectedZone.soilMoisture}%
-                </p>
+                <p className="text-xs text-slate-500">Soil Moisture</p>
+                {hasSensorReading ? (
+                  <>
+                    <p className="mt-1 text-lg font-semibold">
+                      {selectedZoneSensor.soil_moisture}%
+                    </p>
+                    <p className="mt-1 text-[10px] text-slate-600">
+                      Last known backend reading
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-1 text-lg font-semibold text-slate-400">
+                      N/A
+                    </p>
+                    <p className="mt-1 text-[10px] text-slate-600">
+                      No backend reading available
+                    </p>
+                  </>
+                )}
               </div>
-
               <div className="rounded-lg bg-slate-950 p-4">
-                <p className="text-xs text-slate-500">
-                  Ground Tilt
-                </p>
-
-                <p className="mt-1 text-lg font-semibold">
-                  {selectedZone.tilt}°
-                </p>
+                <p className="text-xs text-slate-500">Ground Movement</p>
+                {hasSensorReading ? (
+                  <>
+                    <p className="mt-1 text-lg font-semibold">
+                      {selectedZoneSensor.tilt}°
+                    </p>
+                    <p className="mt-1 text-[10px] text-slate-600">
+                      Last known backend reading
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-1 text-lg font-semibold text-slate-400">
+                      N/A
+                    </p>
+                    <p className="mt-1 text-[10px] text-slate-600">
+                      No backend reading available
+                    </p>
+                  </>
+                )}
               </div>
-
               <div className="rounded-lg bg-slate-950 p-4">
-                <p className="text-xs text-slate-500">
-                  Infrastructure
+                <p className="text-xs text-slate-500">Infrastructure</p>
+                <p className="mt-1 text-lg font-semibold text-slate-400">
+                  N/A
                 </p>
-
-                <p className="mt-1 text-lg font-semibold">
-                  {selectedZone.roads} Roads /{" "}
-                  {selectedZone.bridges} Bridges
+                <p className="mt-1 text-[10px] text-slate-600">
+                  No backend GIS exposure data available
                 </p>
               </div>
             </div>
 
-            {/* Zone Analytics */}
-            <div className="mt-4">
-              <p className="mb-3 text-sm font-semibold">
-                Environmental Condition Analysis
-              </p>
-
-              <ZoneAnalytics
-                rainfall={selectedZone.rainfall}
-                soilMoisture={selectedZone.soilMoisture}
-                tilt={selectedZone.tilt}
-              />
-            </div>
-
-            <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
+            {hasSensorReading && (
+              <div className="mt-4">
                 <p className="mb-3 text-sm font-semibold">
-                  Risk Factors
+                  Environmental observations
                 </p>
-
-                <ul className="space-y-2">
-                  {selectedZone.reasons.map(
-                    (reason) => (
-                      <li
-                        key={reason}
-                        className="flex items-center gap-2 text-sm text-slate-300"
-                      >
-                        <span className="h-2 w-2 rounded-full bg-red-400"></span>
-                        {reason}
-                      </li>
-                    )
-                  )}
-                </ul>
+                <ZoneAnalytics
+                  rainfall={selectedZoneSensor.rainfall}
+                  soilMoisture={selectedZoneSensor.soil_moisture}
+                  tilt={selectedZoneSensor.tilt}
+                />
               </div>
-
-              <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-4">
-                <p className="mb-2 text-sm font-semibold text-cyan-400">
-                  Recommended Action
-                </p>
-
-                <p className="text-sm text-slate-300">
-                  {selectedZone.recommendedAction}
-                </p>
-              </div>
-            </div>
+            )}
           </div>
 
-          {/* RISK ZONES */}
           <div className="mt-6 rounded-xl border border-slate-800 bg-slate-900 p-5">
             <div className="mb-4">
-              <h3 className="font-semibold">
-                Monitored Risk Zones
-              </h3>
-
+              <h3 className="font-semibold">Monitored Risk Zones</h3>
               <p className="text-xs text-slate-500">
-                AI-generated risk assessment
+                Risk values appear only after a backend ML prediction exists
+                for that zone.
               </p>
             </div>
 
@@ -1479,9 +1168,7 @@ export default function Home() {
               {zones.map((zone) => (
                 <div
                   key={zone.id}
-                  onClick={() =>
-                    selectZone(zone.id)
-                  }
+                  onClick={() => selectZone(zone.id)}
                   className={`cursor-pointer rounded-lg border p-4 transition ${
                     selectedZone.id === zone.id
                       ? "border-cyan-500 bg-cyan-500/5"
@@ -1490,26 +1177,15 @@ export default function Home() {
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium">
-                        {zone.name}
-                      </p>
-
-                      <p className="text-xs text-slate-500">
-                        AI Risk Score
-                      </p>
+                      <p className="font-medium">{zone.name}</p>
+                      <p className="text-xs text-slate-500">Risk Score</p>
                     </div>
-
                     <div className="text-right">
                       <p className="text-xl font-bold">
-                        {zone.risk}%
+                        {hasPrediction(zone) ? `${zone.risk}%` : "N/A"}
                       </p>
-
-                      <p
-                        className={`text-xs ${getRiskTextClass(
-                          zone.status
-                        )}`}
-                      >
-                        {zone.status}
+                      <p className={`text-xs ${getRiskTextClass(zone.status)}`}>
+                        {hasPrediction(zone) ? zone.status : "NO PREDICTION"}
                       </p>
                     </div>
                   </div>
@@ -1518,7 +1194,7 @@ export default function Home() {
                     <div
                       className="h-full rounded-full bg-cyan-400 transition-all duration-500"
                       style={{
-                        width: `${zone.risk}%`,
+                        width: hasPrediction(zone) ? `${zone.risk}%` : "0%",
                       }}
                     ></div>
                   </div>
@@ -1527,54 +1203,48 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Risk Trend Analysis */}
           <div className="mt-6 rounded-xl border border-slate-800 bg-slate-900 p-5">
             <div className="mb-5">
               <h3 className="font-semibold">Risk Trend Analysis</h3>
-
               <p className="text-xs text-slate-500">
-                Historical AI risk progression for the selected monitoring period
+                History is recorded only when this dashboard receives a backend
+                ML prediction.
               </p>
             </div>
 
             <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
               <div className="mb-4 flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-slate-400">
-                    Selected Zone
-                  </p>
-
-                  <p className="font-semibold">
-                    {selectedZone.name}
-                  </p>
+                  <p className="text-sm text-slate-400">Selected Zone</p>
+                  <p className="font-semibold">{selectedZone.name}</p>
                 </div>
-
                 <div className="text-right">
-                  <p className="text-xs text-slate-500">
-                    Current Risk
-                  </p>
-
+                  <p className="text-xs text-slate-500">Current Risk</p>
                   <p className="text-xl font-bold text-cyan-400">
-                    {selectedZone.risk}%
+                    {hasPrediction(selectedZone)
+                      ? `${selectedZone.risk}%`
+                      : "N/A"}
                   </p>
                 </div>
               </div>
 
-              <RiskTrendChart data={backendRiskHistory} />
+              {selectedZoneRiskHistory.length === 0 ? (
+                <div className="flex h-48 items-center justify-center rounded-lg border border-slate-800 bg-slate-950 text-sm text-slate-500">
+                  No backend prediction history available for this zone yet.
+                </div>
+              ) : (
+                <RiskTrendChart data={selectedZoneRiskHistory} />
+              )}
             </div>
           </div>
 
-          {/* PRIORITIES */}
           <div
             id="priorities"
             className="mt-6 rounded-xl border border-slate-800 bg-slate-900 p-5"
           >
-            <h3 className="font-semibold">
-              Top Response Priorities
-            </h3>
-
+            <h3 className="font-semibold">Top Response Priorities</h3>
             <p className="mb-4 text-xs text-slate-500">
-              Areas requiring immediate attention
+              Values shown exactly as returned by the backend priority service.
             </p>
 
             <div className="space-y-4">
@@ -1591,33 +1261,36 @@ export default function Home() {
                     <div className="flex items-center justify-between">
                       <div>
                         <h3 className="font-semibold">
-                          {zones.find((z) => z.id === priority.zone_id)?.name || priority.zone_id}
+                          {zones.find((z) => z.id === priority.zone_id)?.name ||
+                            priority.zone_id}
                         </h3>
-
-                        <p className="text-sm text-slate-400">
-                          Priority Score
-                        </p>
+                        <p className="text-sm text-slate-400">Priority Score</p>
                       </div>
-
                       <span className="text-2xl font-bold text-cyan-400">
-                        {Number(priority.priority_score ?? priority.risk ?? 0).toFixed(1)}
+                        {Number(
+                          priority.priority_score ?? priority.risk ?? 0
+                        ).toFixed(1)}
                       </span>
                     </div>
 
                     <div className="mt-3 grid grid-cols-3 gap-3 text-sm">
                       <div>
-                        <p className="text-slate-400 text-xs">Risk</p>
-                        <p className="font-medium">{Number(priority.risk ?? 0).toFixed(1)}</p>
+                        <p className="text-xs text-slate-400">Risk</p>
+                        <p className="font-medium">
+                          {Number(priority.risk ?? 0).toFixed(1)}
+                        </p>
                       </div>
-
                       <div>
-                        <p className="text-slate-400 text-xs">Exposure</p>
-                        <p className="font-medium">{Number(priority.exposure ?? 0).toFixed(1)}</p>
+                        <p className="text-xs text-slate-400">Exposure</p>
+                        <p className="font-medium">
+                          {Number(priority.exposure ?? 0).toFixed(1)}
+                        </p>
                       </div>
-
                       <div>
-                        <p className="text-slate-400 text-xs">Urgency</p>
-                        <p className="font-medium">{Number(priority.urgency ?? 0).toFixed(1)}</p>
+                        <p className="text-xs text-slate-400">Urgency</p>
+                        <p className="font-medium">
+                          {Number(priority.urgency ?? 0).toFixed(1)}
+                        </p>
                       </div>
                     </div>
 
@@ -1625,9 +1298,9 @@ export default function Home() {
                       <p className="text-xs text-slate-400">
                         Recommended Action
                       </p>
-
                       <p className="mt-1 text-sm font-medium text-slate-200">
-                        {priority.recommended_action || "Prepare response protocol and monitor closely."}
+                        {priority.recommended_action ||
+                          "No backend recommendation available."}
                       </p>
                     </div>
                   </div>
@@ -1636,64 +1309,42 @@ export default function Home() {
             </div>
           </div>
 
-          {/* FIELD REPORTS */}
           <div
             id="field-reports"
             className="mt-6 rounded-xl border border-slate-800 bg-slate-900 p-5"
           >
-            <div className="mb-5 flex items-center justify-between">
+            <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-lg font-semibold">
-                  Field Reports
-                </h3>
-
+                <h3 className="text-lg font-semibold">Field Reports</h3>
                 <p className="text-xs text-slate-500">
-                  Observations submitted by field
-                  teams
+                  Ground observations only. Submitting a report does not change
+                  risk scores or create ML predictions.
                 </p>
               </div>
-
               <button
-                onClick={() =>
-                  setShowReportForm(
-                    !showReportForm
-                  )
-                }
+                onClick={() => setShowReportForm(!showReportForm)}
                 className="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400"
               >
-                {showReportForm
-                  ? "Close Form"
-                  : "Submit Field Report"}
+                {showReportForm ? "Close Form" : "Submit Observation"}
               </button>
             </div>
 
-            {/* REPORT FORM */}
             {showReportForm && (
               <div className="mb-5 rounded-lg border border-cyan-500/30 bg-slate-950 p-5">
-                <h4 className="mb-4 font-semibold">
-                  New Field Report
-                </h4>
+                <h4 className="mb-4 font-semibold">New Field Observation</h4>
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
                     <label className="mb-2 block text-sm text-slate-400">
                       Zone
                     </label>
-
                     <select
                       value={reportZone}
-                      onChange={(event) =>
-                        setReportZone(
-                          event.target.value
-                        )
-                      }
+                      onChange={(event) => setReportZone(event.target.value)}
                       className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm outline-none focus:border-cyan-500"
                     >
                       {zones.map((zone) => (
-                        <option
-                          key={zone.id}
-                          value={zone.id}
-                        >
+                        <option key={zone.id} value={zone.id}>
                           {zone.name}
                         </option>
                       ))}
@@ -1702,20 +1353,17 @@ export default function Home() {
 
                   <div>
                     <label className="mb-2 block text-sm text-slate-400">
-                      Severity
+                      Observed Severity
                     </label>
-
                     <select
                       value={reportSeverity}
                       onChange={(event) =>
-                        setReportSeverity(
-                          event.target.value
-                        )
+                        setReportSeverity(event.target.value)
                       }
                       className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm outline-none focus:border-cyan-500"
                     >
                       <option>LOW</option>
-                      <option>MEDIUM</option>
+                      <option>MODERATE</option>
                       <option>HIGH</option>
                       <option>CRITICAL</option>
                     </select>
@@ -1726,13 +1374,10 @@ export default function Home() {
                   <label className="mb-2 block text-sm text-slate-400">
                     Observation
                   </label>
-
                   <textarea
                     value={reportObservation}
                     onChange={(event) =>
-                      setReportObservation(
-                        event.target.value
-                      )
+                      setReportObservation(event.target.value)
                     }
                     rows={4}
                     placeholder="Describe the field observation..."
@@ -1742,118 +1387,140 @@ export default function Home() {
 
                 <div className="mt-4 flex justify-end">
                   <button
-                    onClick={
-                      handleSubmitReport
-                    }
+                    onClick={handleSubmitReport}
                     className="rounded-lg bg-green-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-green-400"
                   >
-                    Submit Report
+                    Submit Observation
                   </button>
                 </div>
               </div>
             )}
 
-            {/* REPORT LIST */}
             <div className="space-y-3">
-              {fieldReports.map((report) => (
-                <div
-                  key={report.id}
-                  className="rounded-lg border border-slate-800 bg-slate-950 p-4"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="font-medium">
-                        {report.zoneName}
-                      </p>
-
-                      <p className="mt-2 text-sm text-slate-300">
-                        {report.observation}
-                      </p>
-
-                      <p className="mt-2 text-xs text-slate-500">
-                        {report.time}
-                      </p>
-                    </div>
-
-                    <span
-                      className={`rounded-md px-3 py-1 text-xs font-semibold ${getSeverityClass(
-                        report.severity
-                      )}`}
-                    >
-                      {report.severity}
-                    </span>
-                  </div>
+              {fieldReports.length === 0 ? (
+                <div className="rounded-lg border border-slate-800 bg-slate-950 p-4 text-sm text-slate-400">
+                  No field observations received from backend.
                 </div>
-              ))}
+              ) : (
+                fieldReports.map((report) => (
+                  <div
+                    key={report.id}
+                    className="rounded-lg border border-slate-800 bg-slate-950 p-4"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-[10px] font-bold tracking-wider text-slate-500">
+                          OBSERVATION
+                        </p>
+                        <p className="mt-1 font-medium">{report.zoneName}</p>
+                        <p className="mt-2 text-sm text-slate-300">
+                          {report.observation}
+                        </p>
+                        <p className="mt-2 text-xs text-slate-500">
+                          {report.time}
+                        </p>
+                      </div>
+                      <span
+                        className={`rounded-md border px-3 py-1 text-xs font-semibold ${getSeverityClass(
+                          report.severity
+                        )}`}
+                      >
+                        {report.severity}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
-          {/* SIMULATION */}
           <div
             id="simulation"
             className="mt-6 rounded-xl border border-slate-800 bg-slate-900 p-5"
           >
-            <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <h3 className="text-lg font-semibold">
-                  Risk Simulation & AI Prediction
-                </h3>
+            <div className="mb-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-white">
+                    Scenario Simulation
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Adjust scenario inputs and send them to the backend
+                    simulation service.
+                  </p>
+                </div>
+                <span className="w-fit rounded-full border border-blue-400/20 bg-blue-400/10 px-3 py-1 text-[10px] font-bold tracking-wider text-blue-300">
+                  SCENARIO INPUTS
+                </span>
+              </div>
+            </div>
 
-                <p className="text-xs text-slate-500">
-                  Test environmental scenarios & generate live AI ML risk predictions
+            <div className="mb-6 grid gap-4 md:grid-cols-2">
+              <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-white">
+                    Backend Prediction
+                  </p>
+                  <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold tracking-wider text-emerald-300">
+                    REAL BACKEND DATA
+                  </span>
+                </div>
+                <p className="mt-3 text-2xl font-bold text-white">
+                  {hasPrediction(selectedZone)
+                    ? `${selectedZone.risk}%`
+                    : "N/A"}
+                </p>
+                <p className="mt-1 text-xs text-slate-400">
+                  {hasPrediction(selectedZone)
+                    ? selectedZone.status
+                    : "No backend prediction for this zone yet."}
                 </p>
               </div>
 
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-slate-500">
-                  Live Sensor Mode
-                </span>
-
-                <button
-                  onClick={() =>
-                    setLiveSensorMode(
-                      !liveSensorMode
-                    )
-                  }
-                  className={`rounded-lg px-4 py-2 text-xs font-semibold ${
-                    liveSensorMode
-                      ? "bg-green-500 text-slate-950"
-                      : "bg-slate-800 text-slate-300"
-                  }`}
-                >
-                  {liveSensorMode
-                    ? "LIVE ON"
-                    : "START LIVE"}
-                </button>
+              <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-white">
+                    Scenario Simulation
+                  </p>
+                  <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-bold tracking-wider text-blue-300">
+                    USER-DEFINED SCENARIO
+                  </span>
+                </div>
+                <p className="mt-3 text-2xl font-bold text-white">
+                  {simulationResult
+                    ? `${Math.round(simulationResult.simulated_risk_score)}%`
+                    : "—"}
+                </p>
+                <p className="mt-1 text-xs text-slate-400">
+                  {simulationResult
+                    ? simulationResult.simulated_risk_level
+                    : "No simulation run yet."}
+                </p>
               </div>
             </div>
 
             <div className="grid gap-6 lg:grid-cols-2">
-              {/* INPUTS */}
               <div className="rounded-lg border border-slate-800 bg-slate-950 p-5">
-                <h4 className="mb-6 font-semibold">
-                  Simulation Inputs
-                </h4>
+                <h4 className="mb-6 font-semibold">Scenario Inputs</h4>
+                <p className="mb-6 text-xs text-slate-500">
+                  These sliders are user-defined scenario values, not live
+                  sensor streams.
+                </p>
 
-                {/* RAINFALL */}
                 <div>
                   <div className="flex justify-between">
-                    <label className="text-sm">
-                      Rainfall
-                    </label>
-
+                    <label className="text-sm">Rainfall</label>
                     <span className="font-semibold text-cyan-400">
                       {rainfall} mm
                     </span>
                   </div>
-
                   <input
                     type="range"
                     min="0"
                     max="200"
                     value={rainfall}
                     onChange={(event) =>
-                      updateSelectedZone(
+                      updateScenarioInputs(
                         Number(event.target.value),
                         soilMoisture,
                         groundTilt
@@ -1861,32 +1528,22 @@ export default function Home() {
                     }
                     className="mt-3 w-full accent-cyan-400"
                   />
-
-                  <div className="flex justify-between text-xs text-slate-600">
-                    <span>0 mm</span>
-                    <span>200 mm</span>
-                  </div>
                 </div>
 
-                {/* SOIL */}
                 <div className="mt-8">
                   <div className="flex justify-between">
-                    <label className="text-sm">
-                      Soil Moisture
-                    </label>
-
+                    <label className="text-sm">Soil Moisture</label>
                     <span className="font-semibold text-cyan-400">
                       {soilMoisture}%
                     </span>
                   </div>
-
                   <input
                     type="range"
                     min="0"
                     max="100"
                     value={soilMoisture}
                     onChange={(event) =>
-                      updateSelectedZone(
+                      updateScenarioInputs(
                         rainfall,
                         Number(event.target.value),
                         groundTilt
@@ -1894,25 +1551,15 @@ export default function Home() {
                     }
                     className="mt-3 w-full accent-cyan-400"
                   />
-
-                  <div className="flex justify-between text-xs text-slate-600">
-                    <span>0%</span>
-                    <span>100%</span>
-                  </div>
                 </div>
 
-                {/* TILT */}
                 <div className="mt-8">
                   <div className="flex justify-between">
-                    <label className="text-sm">
-                      Ground Tilt
-                    </label>
-
+                    <label className="text-sm">Ground Movement</label>
                     <span className="font-semibold text-cyan-400">
                       {groundTilt.toFixed(1)}°
                     </span>
                   </div>
-
                   <input
                     type="range"
                     min="0"
@@ -1920,7 +1567,7 @@ export default function Home() {
                     step="0.1"
                     value={groundTilt}
                     onChange={(event) =>
-                      updateSelectedZone(
+                      updateScenarioInputs(
                         rainfall,
                         soilMoisture,
                         Number(event.target.value)
@@ -1928,52 +1575,50 @@ export default function Home() {
                     }
                     className="mt-3 w-full accent-cyan-400"
                   />
-
-                  <div className="flex justify-between text-xs text-slate-600">
-                    <span>0°</span>
-                    <span>10°</span>
-                  </div>
                 </div>
               </div>
 
-              {/* RESULT */}
               <div className="rounded-lg border border-slate-800 bg-slate-950 p-5">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-semibold">
-                    Simulation Result
-                  </h4>
-
+                  <h4 className="font-semibold">Simulation Result</h4>
                   <span className="text-xs text-slate-500">
                     {selectedZone.name}
                   </span>
                 </div>
 
-                <div className="mt-8 text-center">
-                  <p className="text-xs text-slate-500">
-                    SIMULATED RISK
-                  </p>
-
-                  <p className="mt-2 text-6xl font-bold text-cyan-400">
-                    {simulatedRisk}%
-                  </p>
-
-                  <span
-                    className={`mt-4 inline-block rounded-lg px-5 py-3 text-sm font-bold ${getStatusClass(
-                      simulatedStatus
-                    )}`}
-                  >
-                    {simulatedStatus}
-                  </span>
-                </div>
-
-                <div className="mt-8 h-3 overflow-hidden rounded-full bg-slate-800">
-                  <div
-                    className="h-full rounded-full bg-cyan-400 transition-all duration-300"
-                    style={{
-                      width: `${simulatedRisk}%`,
-                    }}
-                  ></div>
-                </div>
+                {!simulationResult ? (
+                  <div className="mt-8 rounded-xl border border-dashed border-white/10 p-6 text-center text-sm text-slate-400">
+                    No simulation run yet.
+                  </div>
+                ) : (
+                  <div className="mt-6 rounded-lg border border-blue-500/20 bg-blue-500/5 p-4">
+                    <p className="text-xs font-semibold text-blue-300">
+                      SIMULATION RESULT
+                    </p>
+                    <div className="mt-3 grid grid-cols-3 gap-3">
+                      <div>
+                        <p className="text-xs text-slate-500">Risk Score</p>
+                        <p className="text-xl font-bold text-cyan-400">
+                          {Math.round(simulationResult.simulated_risk_score)}%
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">Risk Level</p>
+                        <p className="text-xl font-bold text-cyan-400">
+                          {simulationResult.simulated_risk_level}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">Priority Score</p>
+                        <p className="text-xl font-bold text-cyan-400">
+                          {Math.round(
+                            simulationResult.simulated_priority_score
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="mt-6 space-y-3">
                   <button
@@ -1982,8 +1627,8 @@ export default function Home() {
                     className="w-full rounded-lg bg-cyan-500 px-5 py-3 text-sm font-bold text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {isSimulating
-                      ? "Running AI Simulation..."
-                      : "Run Backend AI Simulation"}
+                      ? "Running scenario simulation..."
+                      : "Run Scenario Simulation"}
                   </button>
 
                   <button
@@ -1992,160 +1637,18 @@ export default function Home() {
                     className="w-full rounded-lg bg-red-600 px-4 py-3 font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
                   >
                     {predictionLoading
-                      ? "Running AI Prediction..."
-                      : "Run Backend AI Prediction"}
+                      ? "Running backend prediction..."
+                      : "Run Backend ML Prediction"}
                   </button>
                 </div>
-
-                {simulationResult && (
-                  <div className="mt-4 rounded-lg border border-green-500/20 bg-green-500/5 p-4">
-                    <p className="text-xs text-green-400 font-semibold">
-                      BACKEND SIMULATION RESULT
-                    </p>
-
-                    <div className="mt-3 grid grid-cols-3 gap-3">
-                      <div>
-                        <p className="text-xs text-slate-500">
-                          Risk Score
-                        </p>
-                        <p className="text-xl font-bold text-cyan-400">
-                          {Math.round(simulationResult.simulated_risk_score ?? simulationResult.risk ?? 0)}%
-                        </p>
-                      </div>
-
-                      <div>
-                        <p className="text-xs text-slate-500">
-                          Risk Level
-                        </p>
-                        <p className="text-xl font-bold text-cyan-400">
-                          {simulationResult.simulated_risk_level ?? simulationResult.level}
-                        </p>
-                      </div>
-
-                      <div>
-                        <p className="text-xs text-slate-500">
-                          Priority Score
-                        </p>
-                        <p className="text-xl font-bold text-cyan-400">
-                          {Math.round(simulationResult.simulated_priority_score ?? simulationResult.priority ?? 0)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {backendPrediction && (
-                  <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/5 p-4">
-                    <h3 className="font-semibold text-red-400">
-                      Backend AI Prediction
-                    </h3>
-
-                    <div className="mt-3 grid grid-cols-3 gap-3">
-                      <div>
-                        <p className="text-xs text-slate-400">
-                          Risk Score
-                        </p>
-                        <p className="text-2xl font-bold text-red-400">
-                          {Number(backendPrediction.risk_score ?? 0).toFixed(1)}%
-                        </p>
-                      </div>
-
-                      <div>
-                        <p className="text-xs text-slate-400">
-                          Risk Level
-                        </p>
-                        <p className="text-2xl font-bold text-red-400">
-                          {backendPrediction.risk_level}
-                        </p>
-                      </div>
-
-                      <div>
-                        <p className="text-xs text-slate-400">
-                          Confidence
-                        </p>
-                        <p className="text-xl font-semibold">
-                          {(Number(backendPrediction.confidence ?? 0.9) * 100).toFixed(1)}%
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mt-4">
-                      <p className="text-sm font-semibold">
-                        Risk Drivers
-                      </p>
-
-                      <ul className="mt-2 list-disc pl-5 text-sm text-slate-300 space-y-1">
-                        {backendPrediction.drivers && backendPrediction.drivers.map(
-                          (driver: string) => (
-                            <li key={driver}>{driver}</li>
-                          )
-                        )}
-                      </ul>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           </div>
 
-          {/* RISK HISTORY */}
-          <div className="mt-6 rounded-xl border border-slate-800 bg-slate-900 p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold">
-                  Risk History
-                </h3>
-
-                <p className="text-xs text-slate-500">
-                  Recent simulated and sensor risk
-                  readings
-                </p>
-              </div>
-
-              <span className="rounded-md bg-cyan-500/10 px-3 py-1 text-xs text-cyan-400">
-                {liveSensorMode
-                  ? "LIVE"
-                  : "SIMULATED"}
-              </span>
-            </div>
-
-            <div className="mt-6 flex h-48 items-end gap-2 rounded-lg bg-slate-950 p-4">
-              {riskHistory.map(
-                (value, index) => (
-                  <div
-                    key={`${value}-${index}`}
-                    className="group relative flex h-full flex-1 items-end"
-                  >
-                    <div
-                      className="w-full rounded-t-md bg-cyan-400 transition-all duration-500 hover:bg-cyan-300"
-                      style={{
-                        height: `${Math.max(
-                          5,
-                          value
-                        )}%`,
-                      }}
-                    ></div>
-
-                    <span className="absolute -top-6 left-1/2 hidden -translate-x-1/2 text-xs text-white group-hover:block">
-                      {value}%
-                    </span>
-                  </div>
-                )
-              )}
-            </div>
-
-            <div className="mt-2 flex justify-between text-xs text-slate-600">
-              <span>Earlier</span>
-              <span>Latest</span>
-            </div>
-          </div>
-
-          {/* LIVE BACKEND SENSOR DATA */}
           <div className="mt-6 rounded-xl border border-slate-800 bg-slate-900 p-5">
             <h3 className="mb-4 text-lg font-semibold">
-              Live Backend Sensor Data
+              Backend Sensor Readings
             </h3>
-
             {sensorData.length === 0 ? (
               <p className="text-sm text-slate-400">
                 No sensor readings available from backend.
@@ -2159,26 +1662,19 @@ export default function Home() {
                   >
                     <div className="flex justify-between">
                       <span className="font-semibold">
-                        {zonesData.find((z) => z.id === sensor.zone_id)?.name || sensor.zone_id}
+                        {zonesData.find((z) => z.id === sensor.zone_id)?.name ||
+                          sensor.zone_id}
                       </span>
-
                       <span className="text-xs text-slate-400">
-                        {sensor.timestamp ? new Date(sensor.timestamp).toLocaleTimeString() : "Just now"}
+                        {sensor.timestamp
+                          ? new Date(sensor.timestamp).toLocaleTimeString()
+                          : "Unknown time"}
                       </span>
                     </div>
-
                     <div className="mt-2 grid grid-cols-3 gap-2 text-sm">
-                      <div>
-                        🌧️ {sensor.rainfall} mm
-                      </div>
-
-                      <div>
-                        💧 {sensor.soil_moisture}%
-                      </div>
-
-                      <div>
-                        📐 {sensor.tilt}°
-                      </div>
+                      <div>Rainfall {sensor.rainfall} mm</div>
+                      <div>Soil {sensor.soil_moisture}%</div>
+                      <div>Movement {sensor.tilt}°</div>
                     </div>
                   </div>
                 ))}
@@ -2186,50 +1682,52 @@ export default function Home() {
             )}
           </div>
 
-          {/* DATA SOURCES */}
           <div className="mt-6 rounded-xl border border-slate-800 bg-slate-900 p-5">
-            <h3 className="font-semibold">
-              Connected Data Sources
-            </h3>
-
+            <h3 className="font-semibold">Data Sources</h3>
             <p className="mt-1 text-xs text-slate-500">
-              Inputs currently represented in the
-              prototype
+              Sources represented through the backend. Individual feed
+              connectivity is not separately verified in this dashboard.
             </p>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              {[
-                "Rainfall",
-                "Soil Moisture",
-                "Satellite / GIS",
-                "Ground Sensors",
-                "Field Reports",
-              ].map((source) => (
-                <div
-                  key={source}
-                  className="rounded-lg border border-slate-800 bg-slate-950 p-4"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-green-400"></span>
-
-                    <span className="text-sm">
-                      {source}
-                    </span>
-                  </div>
-
-                  <p className="mt-2 text-xs text-green-400">
-                    Connected
-                  </p>
-                </div>
-              ))}
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead className="text-xs uppercase tracking-wider text-slate-500">
+                  <tr>
+                    <th className="pb-3 pr-4">Source</th>
+                    <th className="pb-3 pr-4">Purpose</th>
+                    <th className="pb-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800 text-slate-300">
+                  {[
+                    ["IoT Sensors", "Soil moisture / ground movement"],
+                    ["Weather Data", "Rainfall"],
+                    ["GIS", "Terrain / spatial information"],
+                    ["ML Model", "Risk prediction"],
+                    ["Field Reports", "Ground observations"],
+                    ["Historical Inventory", "Landslide history"],
+                  ].map(([source, purpose]) => (
+                    <tr key={source}>
+                      <td className="py-3 pr-4 font-medium text-white">
+                        {source}
+                      </td>
+                      <td className="py-3 pr-4">{purpose}</td>
+                      <td className="py-3">
+                        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-bold tracking-wider text-slate-300">
+                          BACKEND PROVIDED
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
 
-          {/* FOOTER */}
           <footer className="mt-10 border-t border-slate-800 py-6 text-center">
             <p className="text-xs text-slate-600">
-              SlopeGuard–NER • AI-Powered Landslide
-              Early Warning & Response System
+              SlopeGuard–NER • ML-based landslide risk assessment and response
+              command center
             </p>
           </footer>
         </section>

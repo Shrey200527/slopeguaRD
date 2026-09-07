@@ -1,10 +1,12 @@
 "use client";
 
+import { useEffect } from "react";
 import {
   MapContainer,
   TileLayer,
   CircleMarker,
   Popup,
+  useMap,
 } from "react-leaflet";
 
 import "leaflet/dist/leaflet.css";
@@ -12,8 +14,8 @@ import "leaflet/dist/leaflet.css";
 type MapZone = {
   id: string;
   name: string;
-  risk: number;
-  confidence: number;
+  risk: number | null;
+  confidence: number | null;
   lat: number;
   lng: number;
   rainfall: number;
@@ -25,6 +27,7 @@ type MapZone = {
   status: string;
   reasons: string[];
   recommendedAction: string;
+  predictionAvailable?: boolean;
 };
 
 type MapProps = {
@@ -32,112 +35,148 @@ type MapProps = {
 };
 
 const getRiskColor = (status: string) => {
-  if (status === "CRITICAL") return "red";
-  if (status === "HIGH") return "orange";
-  if (status === "MEDIUM") return "yellow";
-  return "green";
+  switch (status) {
+    case "CRITICAL":
+      return "red";
+    case "HIGH":
+      return "orange";
+    case "MODERATE":
+      return "yellow";
+    case "LOW":
+      return "green";
+    default:
+      return "gray";
+  }
 };
 
+function MapRecenter({ center }: { center: [number, number] }) {
+  const map = useMap();
+
+  useEffect(() => {
+    map.setView(center);
+  }, [center, map]);
+
+  return null;
+}
+
 export default function Map({ zones }: MapProps) {
+  const center: [number, number] =
+    zones.length > 0
+      ? [
+          zones.reduce((sum, zone) => sum + zone.lat, 0) / zones.length,
+          zones.reduce((sum, zone) => sum + zone.lng, 0) / zones.length,
+        ]
+      : [27.5, 93.5];
+
   return (
     <MapContainer
-      center={[18.65, 73.65]}
+      center={center}
       zoom={10}
       scrollWheelZoom={true}
       className="h-full w-full"
     >
+      <MapRecenter center={center} />
+
       <TileLayer
         attribution="&copy; OpenStreetMap contributors"
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
-      {zones.map((zone) => (
-        <CircleMarker
-          key={zone.id}
-          center={[zone.lat, zone.lng]}
-          radius={10}
-          pathOptions={{
-            color: getRiskColor(zone.status),
-            fillColor: getRiskColor(zone.status),
-            fillOpacity: 0.8,
-          }}
-        >
-          <Popup>
-            <div className="min-w-[230px] text-black">
-              <h3 className="text-lg font-bold">
-                {zone.name}
-              </h3>
+      {zones.map((zone) => {
+        const hasPrediction =
+          zone.predictionAvailable === true && zone.risk !== null;
 
-              <hr className="my-2" />
+        return (
+          <CircleMarker
+            key={zone.id}
+            center={[zone.lat, zone.lng]}
+            radius={10}
+            pathOptions={{
+              color: getRiskColor(zone.status),
+              fillColor: getRiskColor(zone.status),
+              fillOpacity: 0.8,
+            }}
+          >
+            <Popup>
+              <div className="min-w-[230px] text-black">
+                <h3 className="text-lg font-bold">{zone.name}</h3>
 
-              <p>
-                <strong>Risk Score:</strong>{" "}
-                {zone.risk}%
-              </p>
+                <hr className="my-2" />
 
-              <p>
-                <strong>Confidence:</strong>{" "}
-                {zone.confidence}%
-              </p>
+                {!hasPrediction ? (
+                  <p className="font-semibold text-gray-700">
+                    NO BACKEND PREDICTION
+                  </p>
+                ) : (
+                  <>
+                    <p>
+                      <strong>Risk Score:</strong> {zone.risk}%
+                    </p>
 
-              <p>
-                <strong>Status:</strong>{" "}
-                {zone.status}
-              </p>
+                    <p>
+                      <strong>Risk Level:</strong> {zone.status}
+                    </p>
 
-              <p>
-                <strong>Rainfall:</strong>{" "}
-                {zone.rainfall} mm
-              </p>
+                    <p>
+                      <strong>Data Confidence:</strong>{" "}
+                      {zone.confidence !== null ? `${zone.confidence}%` : "N/A"}
+                    </p>
+                  </>
+                )}
 
-              <p>
-                <strong>Soil Moisture:</strong>{" "}
-                {zone.soilMoisture}%
-              </p>
+                <p>
+                  <strong>Rainfall:</strong>{" "}
+                  {hasPrediction ? `${zone.rainfall} mm` : "N/A"}
+                </p>
 
-              <p>
-                <strong>Ground Tilt:</strong>{" "}
-                {zone.tilt}°
-              </p>
+                <p>
+                  <strong>Soil Moisture:</strong>{" "}
+                  {hasPrediction ? `${zone.soilMoisture}%` : "N/A"}
+                </p>
 
-              <p>
-                <strong>Population:</strong>{" "}
-                {zone.population.toLocaleString()}
-              </p>
+                <p>
+                  <strong>Ground Movement:</strong>{" "}
+                  {hasPrediction ? `${zone.tilt}°` : "N/A"}
+                </p>
 
-              <p>
-                <strong>Infrastructure:</strong>{" "}
-                {zone.roads} roads /{" "}
-                {zone.bridges} bridges
-              </p>
+                <p>
+                  <strong>Population:</strong>{" "}
+                  {zone.population.toLocaleString()}
+                </p>
 
-              <hr className="my-2" />
+                <p>
+                  <strong>Infrastructure:</strong> N/A (Pending GIS feed)
+                </p>
 
-              <p className="font-semibold">
-                Risk Factors:
-              </p>
+                {hasPrediction && (
+                  <>
+                    <hr className="my-2" />
 
-              <ul className="list-disc pl-5 text-sm">
-                {zone.reasons.map((reason) => (
-                  <li key={reason}>
-                    {reason}
-                  </li>
-                ))}
-              </ul>
+                    <p className="font-semibold">ML Factors</p>
 
-              <p className="mt-2">
-                <strong>
-                  Recommended Action:
-                </strong>
-              </p>
+                    <ul className="list-disc pl-5 text-sm">
+                      {zone.reasons.map((reason) => (
+                        <li key={reason}>{reason}</li>
+                      ))}
+                    </ul>
 
-              <p className="text-sm">
-                {zone.recommendedAction}
-              </p>
-            </div>
-          </Popup>
-        </CircleMarker>
-      ))}
+                    <hr className="my-2" />
+
+                    <p>
+                      <strong>Recommended Action:</strong>
+                    </p>
+
+                    <p className="text-sm">
+                      {zone.recommendedAction ||
+                        "No backend recommendation available."}
+                    </p>
+                  </>
+                )}
+              </div>
+            </Popup>
+          </CircleMarker>
+        );
+      })}
     </MapContainer>
   );
 }

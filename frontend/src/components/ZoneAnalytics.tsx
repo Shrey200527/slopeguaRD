@@ -12,9 +12,9 @@ export default function ZoneAnalytics({
   tilt,
 }: ZoneAnalyticsProps) {
   const getLevel = (value: number, high: number) => {
-    if (value >= high) return "High";
-    if (value >= high * 0.6) return "Moderate";
-    return "Low";
+    if (value >= high) return "HIGH";
+    if (value >= high * 0.6) return "MODERATE";
+    return "LOW";
   };
 
   return (
